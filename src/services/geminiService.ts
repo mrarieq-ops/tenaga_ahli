@@ -67,9 +67,9 @@ export async function evaluateQualification(
     Tugas Anda adalah menganalisis dan menilai Data Kualifikasi Tenaga Ahli secara mendetail berdasarkan kriteria yang ada di Dokumen Seleksi (BAB VI Lembar Kriteria Evaluasi) dan Kerangka Acuan Kerja (KAK).
 
     DATA MASUKAN:
-    1. DOKUMEN SELEKSI (Lengkap): ${selectionDocText.substring(0, 120000)}
-    2. KAK: ${kakText.substring(0, 60000)}
-    3. DATA KUALIFIKASI TENAGA AHLI: ${qualificationText.substring(0, 150000)}
+    1. DOKUMEN SELEKSI (Lengkap): ${selectionDocText.substring(0, 150000)}
+    2. KAK: ${kakText.substring(0, 90000)}
+    3. DATA KUALIFIKASI TENAGA AHLI: ${qualificationText.substring(0, 180000)}
 
     ATURAN PENILAIAN SANGAT KETAT (MANDATORY):
     1. IDENTIFIKASI TENAGA AHLI: 
@@ -90,19 +90,19 @@ export async function evaluateQualification(
        - Posisi: Nilai 1 (sesuai posisi yang diusulkan), 0.5 (tidak sesuai) berdasarkan kriteria Bab VI.
        - Referensi: Nilai 1 (ada lampiran referensi/kontrak), 0 (tidak ada).
        - Jumlah: Bulan x Lingkup x Posisi x Referensi.
-       - Keterangan AI: tuliskan nama paket pekerjaan dan Justifikasi secara rinci mengenai nilai lingkup, posisi. 
+       - Keterangan AI: tuliskan nama paket pekerjaan dan Justifikasi secara rinci mengenai penilaian lingkup dan posisi. 
     4. PENILAIAN UNSUR "STATUS TENAGA AHLI" (DETAIL):
-       - Identifikasi lampiran Bukti Pemotongan Pajak Penghasilan (PPh 21).
-       - Bukti Potong/Lapor Pajak PPh 21: Isi "Ada dan mencantumkan nama jelas serta nama perusahaan yang sama dengan nama perusahaan peserta" jika ditemukan bukti PPh 21 atas nama tenaga ahli dan perusahaan yang bersangkutan. Jika tidak ada/tidak sesuai, isi "Tidak ada / tidak mencantumkan nama jelas atau nama perusahaan berbeda dengan nama perusahaan peserta".
-       - Status Tenaga Ahli: Isi "Tenaga Ahli tetap" jika bukti PPh 21 ada dan valid. Jika tidak, isi "Tenaga ahli tidak tetap".
+       - Identifikasi lampiran Bukti Pemotongan Pajak Penghasilan Pasal 21 (BPA1).
+       - Bukti Potong/Lapor Pajak PPh 21: Isi "Ada dan mencantumkan nama jelas serta nama perusahaan yang sama dengan nama perusahaan peserta" jika ditemukan bukti pemotongan pajak penghasilan pasal 21 (BPA1) atas nama tenaga ahli dan perusahaan yang bersangkutan. Jika tidak ada/tidak sesuai, isi "Tidak ada / tidak mencantumkan nama jelas atau nama perusahaan berbeda dengan nama perusahaan peserta".
+       - Status Tenaga Ahli: Isi "Tenaga Ahli tetap" jika bukti pemotongan pajak pasal 21 (BPA1) ada dan valid. Jika tidak, isi "Tenaga ahli tidak tetap".
        - Nilai: Berikan skor berdasarkan kriteria "Status tenaga ahli yang diusulkan" di Bab VI.
        - Bobot: Ambil bobot persentase untuk unsur Status Tenaga Ahli dari Bab VI. **WAJIB DALAM BENTUK DESIMAL**.
        - Nilai Akhir: Nilai x Bobot.
-       - Keterangan AI: Penjelasan mengenai bukti potong dan status yang diberikan.
+       - Keterangan AI: Penjelasan mengenai keberadaan bukti potong pajak penghasilan dan status tenaga ahli yang diberikan.
     5. PENILAIAN UNSUR "SUBUNSUR LAIN-LAIN" (DETAIL):
        - Identifikasi uraian di Subunsur Lain-lain dari KAK/Dokumen Seleksi.
        - Uraian Lain-lain: Isi dengan deskripsi subunsur tersebut.
-       - Penilaian: Isi "Memenuhi" jika dokumen yang dipersyaratkan dilampirkan, "Tidak memenuhi" jika tidak ada.
+       - Penilaian: Isi "Memenuhi" jika dokumen yang dipersyaratkan (misalnya sertifikat kursus bahasa inggris, SKK) dilampirkan, "Tidak memenuhi" jika tidak ada.
        - Nilai: Berikan skor berdasarkan kriteria "Subunsur lain-lain" di Bab VI.
        - Bobot: Ambil bobot persentase untuk unsur Subunsur Lain-lain dari Bab VI. **WAJIB DALAM BENTUK DESIMAL**.
        - Nilai Akhir: Nilai x Bobot.
@@ -110,7 +110,7 @@ export async function evaluateQualification(
     6. PENILAIAN UNSUR LAINNYA: 
        - Tetap nilai unsur lain seperti Sertifikat/SKA sesuai kriteria Bab VI.
        - Bobot tiap kriteria: **WAJIB DALAM BENTUK DESIMAL (Misal: 0.20 untuk 20%)**.
-    7. SKOR DISKRIT (WAJIB): Gunakan HANYA skor yang secara eksplisit tertulis di Dokumen Seleksi untuk bagian skor kriteria utama.
+    7. SKOR DISKRIT (WAJIB): Gunakan HANYA skor yang secara eksplisit tertulis di Dokumen Seleksi pada Bab VI untuk bagian skor kriteria utama.
     8. PERHITUNGAN TOTAL: Hitung "overallScore" sebagai TOTAL hasil penjumlahan seluruh "Nilai Akhir" pada TABEL REKAPITULASI NILAI TENAGA AHLI.
 
     FORMAT OUTPUT (JSON):
