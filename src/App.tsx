@@ -27,6 +27,7 @@ import { evaluateQualification, type EvaluationResult } from "./services/geminiS
 import { jsPDF } from "jspdf";
 import autoTable from "jspdf-autotable";
 import * as XLSX from "xlsx";
+import ExcelJS from "exceljs";
 import { saveAs } from "file-saver";
 
 interface DocState {
@@ -380,86 +381,279 @@ export default function App() {
     doc.save(`Nilai_${result.personnelName || "Personil"}_${new Date().toISOString().split('T')[0]}.pdf`);
   };
 
-  const exportToExcel = () => {
+  const exportToExcel = async () => {
     if (!result) return;
     
-    // Create header info
-    const header = [
-      ["LAPORAN HASIL PENILAIAN KUALIFIKASI TENAGA AHLI"],
-      [`Nama Personil: ${result.personnelName}`],
-      [`Posisi yang Diusulkan: ${result.proposedPosition}`],
-      [`Skor Akhir: ${result.overallScore}`],
-      [`Ringkasan: ${result.summary}`],
-      [" "],
-      ["TABEL PENILAIAN PENDIDIKAN"],
-      ["No", "Persyaratan Pendidikan dalam KAK", "Pendidikan TA Yang Ditawarkan", "Nilai", "Bobot", "Nilai Akhir", "Keterangan AI"],
-      [
-        result.educationAssessment.no,
-        result.educationAssessment.kakRequirement,
-        result.educationAssessment.offeredEducation,
-        result.educationAssessment.score,
-        result.educationAssessment.weight,
-        result.educationAssessment.finalScore,
-        result.educationAssessment.aiRemark
-      ],
-      [" "],
-      ["TABEL PENILAIAN STATUS TENAGA AHLI"],
-      ["No", "Bukti Potong/Lapor Pajak PPh 21", "Status Tenaga Ahli", "Nilai", "Bobot", "Nilai Akhir", "Keterangan AI"],
-      [
-        result.statusAssessment.no,
-        result.statusAssessment.taxProof,
-        result.statusAssessment.employmentStatus,
-        result.statusAssessment.score,
-        result.statusAssessment.weight,
-        result.statusAssessment.finalScore,
-        result.statusAssessment.aiRemark
-      ],
-      [" "],
-      ["TABEL PENILAIAN SUBUNSUR LAIN-LAIN"],
-      ["No", "Uraian Lain-lain", "Penilaian", "Nilai", "Bobot", "Nilai Akhir", "Keterangan AI"],
-      [
-        result.otherSubAssessment.no,
-        result.otherSubAssessment.description,
-        result.otherSubAssessment.evaluation,
-        result.otherSubAssessment.score,
-        result.otherSubAssessment.weight,
-        result.otherSubAssessment.finalScore,
-        result.otherSubAssessment.aiRemark
-      ],
-      [" "],
-      ["TABEL RINCIAN PENGALAMAN KERJA PROFESIONAL"],
-      ["No", "Tgl Mulai", "Tgl Selesai", "Bulan", "Lingkup", "Posisi", "Referensi", "Jumlah", "Keterangan AI"],
-      ...result.experienceAssessment.map(exp => [
-        exp.no,
-        exp.startDate,
-        exp.endDate,
-        exp.months,
-        exp.scope,
-        exp.position,
-        exp.reference,
-        exp.total,
-        exp.aiRemark
-      ]),
-      [" "],
-      ["REKAPITULASI NILAI TENAGA AHLI"],
-      ["No", "Unsur Yang Dinilai", "Nilai", "Bobot", "Nilai Akhir", "Keterangan / Justifikasi"]
+    const workbook = new ExcelJS.Workbook();
+    workbook.creator = 'POKJA DIY';
+    workbook.lastModifiedBy = 'POKJA DIY';
+    workbook.created = new Date();
+    workbook.modified = new Date();
+
+    const titleStyle: Partial<ExcelJS.Style> = {
+      font: { name: 'Arial', family: 4, size: 14, bold: true, color: { argb: 'FFFFFFFF' } },
+      fill: { type: 'pattern', pattern: 'solid', fgColor: { argb: 'FF808000' } }, // Olive Green
+      alignment: { vertical: 'middle', horizontal: 'center' }
+    };
+
+    const headerStyleUnderTitle: Partial<ExcelJS.Style> = {
+      font: { name: 'Arial', family: 4, size: 10, bold: true },
+      alignment: { vertical: 'middle', horizontal: 'left' }
+    };
+
+    const tableHeaderStyle = (color: string): Partial<ExcelJS.Style> => ({
+      font: { name: 'Arial', family: 4, size: 10, bold: true, color: { argb: 'FFFFFFFF' } },
+      fill: { type: 'pattern', pattern: 'solid', fgColor: { argb: color } },
+      alignment: { vertical: 'middle', horizontal: 'center', wrapText: true },
+      border: {
+        top: { style: 'thin' },
+        left: { style: 'thin' },
+        bottom: { style: 'thin' },
+        right: { style: 'thin' }
+      }
+    });
+
+    const bodyStyle: Partial<ExcelJS.Style> = {
+        font: { name: 'Arial', family: 4, size: 9 },
+        alignment: { vertical: 'middle', horizontal: 'left', wrapText: true },
+        border: {
+            top: { style: 'thin' },
+            left: { style: 'thin' },
+            bottom: { style: 'thin' },
+            right: { style: 'thin' }
+        }
+    };
+
+    const centerStyle: Partial<ExcelJS.Style> = {
+        ...bodyStyle,
+        alignment: { vertical: 'middle', horizontal: 'center', wrapText: true }
+    };
+
+    // --- Common Header Builder ---
+    const addStandardHeader = (sheet: ExcelJS.Worksheet, title: string) => {
+      let mergeRange = 'A1:G1';
+      let mergeSubRange = 'A2:G2';
+
+      if (sheet.name === 'Pengalaman Kerja') {
+        mergeRange = 'A1:I1';
+        mergeSubRange = 'A2:I2';
+      } else if (sheet.name === 'Rekapitulasi Nilai') {
+        mergeRange = 'A1:F1';
+        mergeSubRange = 'A2:F2';
+      }
+
+      sheet.mergeCells(mergeRange);
+      const titleCell = sheet.getCell('A1');
+      titleCell.value = 'LAPORAN HASIL PENILAIAN KUALIFIKASI TENAGA AHLI';
+      titleCell.style = titleStyle;
+
+      sheet.mergeCells(mergeSubRange);
+      const subTitleCell = sheet.getCell('A2');
+      subTitleCell.value = 'Evaluasi Jasa Konsultansi Konstruksi';
+      subTitleCell.style = { 
+        ...titleStyle, 
+        fill: { type: 'pattern', pattern: 'solid', fgColor: { argb: 'FF556B2F' } }
+      };
+      subTitleCell.font = { ...titleStyle.font, size: 11 };
+
+      sheet.getCell('A4').value = 'Tanggal Laporan:';
+      sheet.getCell('B4').value = new Date().toLocaleDateString("id-ID");
+      sheet.getCell('A4').font = { bold: true };
+
+      sheet.getCell('A5').value = 'Nama Personil:';
+      sheet.getCell('B5').value = result.personnelName;
+      sheet.getCell('A5').font = { bold: true };
+
+      sheet.getCell('A6').value = 'Posisi yang Diusulkan:';
+      sheet.getCell('B6').value = result.proposedPosition;
+      sheet.getCell('A6').font = { bold: true };
+
+      sheet.getRow(1).height = 30;
+      sheet.getRow(2).height = 20;
+    };
+
+    // --- WORKSHEET 1: Kualifikasi Dasar ---
+    const ws1 = workbook.addWorksheet('Kualifikasi Dasar');
+    addStandardHeader(ws1, 'Kualifikasi Dasar');
+    
+    let currentRow = 8;
+    
+    // Pendidikan Table
+    ws1.mergeCells(`A${currentRow}:G${currentRow}`);
+    const eduTitle = ws1.getCell(`A${currentRow}`);
+    eduTitle.value = '1. TABEL PENILAIAN PENDIDIKAN';
+    eduTitle.font = { bold: true, size: 11 };
+    currentRow++;
+
+    const eduHeaders = ["No", "Persyaratan Pendidikan (KAK)", "Pendidikan TA Yang Ditawarkan", "Nilai", "Bobot (%)", "Nilai Akhir", "Keterangan AI"];
+    const eduRow = ws1.getRow(currentRow);
+    eduRow.values = eduHeaders;
+    eduRow.eachCell((cell) => cell.style = tableHeaderStyle('FF1976D2')); // Blue
+    currentRow++;
+
+    const eduDataRow = ws1.getRow(currentRow);
+    eduDataRow.values = [
+      result.educationAssessment.no,
+      result.educationAssessment.kakRequirement,
+      result.educationAssessment.offeredEducation,
+      result.educationAssessment.score,
+      (result.educationAssessment.weight * 100).toFixed(0),
+      result.educationAssessment.finalScore.toFixed(2),
+      result.educationAssessment.aiRemark
+    ];
+    eduDataRow.eachCell((cell, colNumber) => {
+        if ([1, 4, 5, 6].includes(colNumber)) cell.style = centerStyle;
+        else cell.style = bodyStyle;
+    });
+    currentRow += 2;
+
+    // Status Table
+    ws1.mergeCells(`A${currentRow}:G${currentRow}`);
+    const statusTitle = ws1.getCell(`A${currentRow}`);
+    statusTitle.value = '2. TABEL PENILAIAN STATUS TENAGA AHLI';
+    statusTitle.font = { bold: true, size: 11 };
+    currentRow++;
+
+    const statusHeaders = ["No", "Bukti Potong/Lapor Pajak PPh 21", "Status Tenaga Ahli", "Nilai", "Bobot (%)", "Nilai Akhir", "Keterangan AI"];
+    const statusRow = ws1.getRow(currentRow);
+    statusRow.values = statusHeaders;
+    statusRow.eachCell((cell) => cell.style = tableHeaderStyle('FF2E7D32')); // Green
+    currentRow++;
+
+    const statusDataRow = ws1.getRow(currentRow);
+    statusDataRow.values = [
+      result.statusAssessment.no,
+      result.statusAssessment.taxProof,
+      result.statusAssessment.employmentStatus,
+      result.statusAssessment.score,
+      (result.statusAssessment.weight * 100).toFixed(0),
+      result.statusAssessment.finalScore.toFixed(2),
+      result.statusAssessment.aiRemark
+    ];
+    statusDataRow.eachCell((cell, colNumber) => {
+        if ([1, 4, 5, 6].includes(colNumber)) cell.style = centerStyle;
+        else cell.style = bodyStyle;
+    });
+    currentRow += 2;
+
+    // Subunsur Table
+    ws1.mergeCells(`A${currentRow}:G${currentRow}`);
+    const otherTitle = ws1.getCell(`A${currentRow}`);
+    otherTitle.value = '3. TABEL PENILAIAN SUBUNSUR LAIN-LAIN';
+    otherTitle.font = { bold: true, size: 11 };
+    currentRow++;
+
+    const otherHeaders = ["No", "Uraian Lain-lain", "Penilaian", "Nilai", "Bobot (%)", "Nilai Akhir", "Keterangan AI"];
+    const otherRow = ws1.getRow(currentRow);
+    otherRow.values = otherHeaders;
+    otherRow.eachCell((cell) => cell.style = tableHeaderStyle('FFF57C00')); // Orange
+    currentRow++;
+
+    const otherDataRow = ws1.getRow(currentRow);
+    otherDataRow.values = [
+      result.otherSubAssessment.no,
+      result.otherSubAssessment.description,
+      result.otherSubAssessment.evaluation,
+      result.otherSubAssessment.score,
+      (result.otherSubAssessment.weight * 100).toFixed(0),
+      result.otherSubAssessment.finalScore.toFixed(2),
+      result.otherSubAssessment.aiRemark
+    ];
+    otherDataRow.eachCell((cell, colNumber) => {
+        if ([1, 4, 5, 6].includes(colNumber)) cell.style = centerStyle;
+        else cell.style = bodyStyle;
+    });
+
+    ws1.columns = [
+        { width: 5 }, { width: 35 }, { width: 30 }, { width: 10 }, { width: 10 }, { width: 12 }, { width: 50 }
     ];
 
-    const body = result.criteriaScores.map(item => [
-      item.no,
-      item.name,
-      item.score,
-      item.bobot,
-      item.nilaiAkhir,
-      item.justification
-    ]);
+    // --- WORKSHEET 2: Rincian Pengalaman ---
+    const ws2 = workbook.addWorksheet('Pengalaman Kerja');
+    addStandardHeader(ws2, 'Rincian Pengalaman');
+    
+   // ws2.mergeCells('A1:I1');
+   // ws2.mergeCells('A2:I2');
+    ws2.mergeCells('A8:I8');
+    ws2.getCell('A8').value = '4. TABEL RINCIAN PENGALAMAN KERJA PROFESIONAL';
+    ws2.getCell('A8').font = { bold: true, size: 11 };
 
-    const worksheet = XLSX.utils.aoa_to_sheet([...header, ...body]);
-    const workbook = XLSX.utils.book_new();
-    XLSX.utils.book_append_sheet(workbook, worksheet, "Hasil Penilaian");
+    const expHeaders = ["No", "Tgl Mulai", "Tgl Selesai", "Bulan", "Lingkup", "Posisi", "Referensi", "Total Score", "Keterangan AI"];
+    const expRow = ws2.getRow(9);
+    expRow.values = expHeaders;
+    expRow.eachCell((cell) => cell.style = tableHeaderStyle('FF1565C0'));
 
-    // Write file
-    XLSX.writeFile(workbook, `Hasil_Penilaian_${result.personnelName || "Personil"}_${new Date().toISOString().split('T')[0]}.xlsx`);
+    result.experienceAssessment.forEach((exp, index) => {
+        const row = ws2.getRow(10 + index);
+        row.values = [
+            exp.no,
+            exp.startDate,
+            exp.endDate,
+            exp.months,
+            exp.scope,
+            exp.position,
+            exp.reference,
+            exp.total.toFixed(2),
+            exp.aiRemark
+        ];
+        row.eachCell((cell, colNumber) => {
+            if ([1, 2, 3, 4, 5, 6, 7, 8].includes(colNumber)) cell.style = centerStyle;
+            else cell.style = bodyStyle;
+        });
+    });
+
+    ws2.columns = [
+        { width: 5 }, { width: 12 }, { width: 12 }, { width: 8 }, { width: 8 }, { width: 8 }, { width: 10 }, { width: 12 }, { width: 70 }
+    ];
+
+    // --- WORKSHEET 3: Rekapitulasi Nilai ---
+    const ws3 = workbook.addWorksheet('Rekapitulasi Nilai');
+    addStandardHeader(ws3, 'Rekapitulasi');
+
+    ws3.mergeCells('A8:F8');
+    ws3.getCell('A8').value = '5. REKAPITULASI NILAI TENAGA AHLI (SKOR AKHIR)';
+    ws3.getCell('A8').font = { bold: true, size: 11 };
+
+    ws3.getCell('A10').value = 'Skor Akhir (Total):';
+    ws3.getCell('B10').value = result.overallScore;
+    ws3.getCell('A10').font = { bold: true };
+    ws3.getCell('B10').font = { bold: true, size: 13, color: { argb: 'FFC16C00' } };
+
+    ws3.getCell('A11').value = 'Ringkasan Analisis:';
+    ws3.getCell('A11').font = { bold: true };
+    ws3.mergeCells('B11:F12');
+    ws3.getCell('B11').value = result.summary;
+    ws3.getCell('B11').style = bodyStyle;
+
+    const rekapHeaders = ["No", "Unsur Yang Dinilai", "Nilai", "Bobot (%)", "Nilai Akhir", "Keterangan / Justifikasi"];
+    const rekapRow = ws3.getRow(14);
+    rekapRow.values = rekapHeaders;
+    rekapRow.eachCell((cell) => cell.style = tableHeaderStyle('FF424242'));
+
+    result.criteriaScores.forEach((item, index) => {
+        const row = ws3.getRow(15 + index);
+        row.values = [
+            item.no,
+            item.name,
+            item.score,
+            (item.bobot * 100).toFixed(0),
+            item.nilaiAkhir.toFixed(2),
+            item.justification
+        ];
+        row.eachCell((cell, colNumber) => {
+            if ([1, 3, 4, 5].includes(colNumber)) cell.style = centerStyle;
+            else cell.style = bodyStyle;
+        });
+    });
+
+    ws3.columns = [
+        { width: 5 }, { width: 40 }, { width: 10 }, { width: 10 }, { width: 12 }, { width: 60 }
+    ];
+
+    // Final Touch
+    const buffer = await workbook.xlsx.writeBuffer();
+    const blob = new Blob([buffer], { type: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet' });
+    saveAs(blob, `Nilai_${result.personnelName.replace(/\s+/g, "_") || "Personil"}_${new Date().toISOString().split('T')[0]}.xlsx`);
   };
 
   const { getRootProps: getSelProps, getInputProps: getSelInput, isDragActive: isSelActive } = useDropzone({ 

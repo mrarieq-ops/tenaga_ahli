@@ -83,14 +83,14 @@ export async function evaluateQualification(
        - Nilai Akhir: Nilai x Bobot.
        - Keterangan AI: Penjelasan detail mengapa nilai tersebut diberikan (analisis kesesuaian dan keberadaan ijazah).
     3. PENILAIAN UNSUR "PENGALAMAN KERJA PROFESIONAL" (DETAIL):
-       - Ekstrak seluruh rincian pengalaman kerja tenaga ahli dari Data Kualifikasi/CV.
+       - Ekstrak **SEMUA** rincian pengalaman kerja tenaga ahli dari Data Kualifikasi/CV.
        - Tgl Mulai & Tgl Selesai: Ambil dari CV.
        - Bulan: Hitung selisih bulan (Selesai - Mulai).
        - Lingkup: Nilai 1 (sesuai), 0.75 (menunjang), 0.5 (tidak sesuai) berdasarkan kriteria Bab VI terhadap paket pekerjaan.
        - Posisi: Nilai 1 (sesuai posisi yang diusulkan), 0.5 (tidak sesuai) berdasarkan kriteria Bab VI.
        - Referensi: Nilai 1 (ada lampiran referensi/kontrak), 0 (tidak ada).
        - Jumlah: Bulan x Lingkup x Posisi x Referensi.
-       - Keterangan AI: tuliskan nama paket pekerjaan dan Justifikasi secara rinci mengenai penilaian lingkup dan posisi. 
+       - Keterangan AI: tuliskan nama paket pekerjaan dan Justifikasi secara rinci mengenai penilaian lingkup dan posisi serta keberadaan referensi.
     4. PENILAIAN UNSUR "STATUS TENAGA AHLI" (DETAIL):
        - Identifikasi lampiran Bukti Pemotongan Pajak Penghasilan Pasal 21 (BPA1).
        - Bukti Potong/Lapor Pajak PPh 21: Isi "Ada dan mencantumkan nama jelas serta nama perusahaan yang sama dengan nama perusahaan peserta" jika ditemukan bukti pemotongan pajak penghasilan pasal 21 (BPA1) atas nama tenaga ahli dan perusahaan yang bersangkutan. Jika tidak ada/tidak sesuai, isi "Tidak ada / tidak mencantumkan nama jelas atau nama perusahaan berbeda dengan nama perusahaan peserta".
@@ -102,7 +102,7 @@ export async function evaluateQualification(
     5. PENILAIAN UNSUR "SUBUNSUR LAIN-LAIN" (DETAIL):
        - Identifikasi uraian di Subunsur Lain-lain dari KAK/Dokumen Seleksi.
        - Uraian Lain-lain: Isi dengan deskripsi subunsur tersebut.
-       - Penilaian: Isi "Memenuhi" jika dokumen yang dipersyaratkan (misalnya sertifikat kursus bahasa inggris, SKK) dilampirkan, "Tidak memenuhi" jika tidak ada.
+       - Penilaian: Isi "Memenuhi" jika dokumen yang dipersyaratkan (misalnya sertifikat kursus bahasa inggris, SKK) dilampirkan, "Tidak memenuhi" jika tidak ada,  "Memenuhi sebagian" jika melampirkan sebagian.
        - Nilai: Berikan skor berdasarkan kriteria "Subunsur lain-lain" di Bab VI.
        - Bobot: Ambil bobot persentase untuk unsur Subunsur Lain-lain dari Bab VI. **WAJIB DALAM BENTUK DESIMAL**.
        - Nilai Akhir: Nilai x Bobot.
@@ -184,6 +184,8 @@ export async function evaluateQualification(
     model,
     contents: [{ role: "user", parts: [{ text: prompt }] }],
     config: {
+      systemInstruction: "Kamu adalah agen AI analisis data yang sangat teliti, logis, dan mengutamakan akurasi 100%. Tugasmu adalah memproses data yang diberikan oleh pengguna. Aturan Wajib Sebelum Merespon: Kamu TIDAK BOLEH langsung memberikan jawaban akhir. Kamu WAJIB menjabarkan proses berpikirmu secara bertahap (langkah demi langkah) di dalam struktur analisis internal menggunakan metode Chain of Thought.",
+      temperature: 0.1,
       responseMimeType: "application/json",
       responseSchema: {
         type: Type.OBJECT,
