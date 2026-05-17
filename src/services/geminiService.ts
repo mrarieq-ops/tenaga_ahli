@@ -185,7 +185,7 @@ export async function evaluateQualification(
     contents: [{ role: "user", parts: [{ text: prompt }] }],
     config: {
       systemInstruction: "Kamu adalah agen AI analisis data yang sangat teliti, logis, dan mengutamakan akurasi 100%. Tugasmu adalah memproses data yang diberikan oleh pengguna. Aturan Wajib Sebelum Merespon: Kamu TIDAK BOLEH langsung memberikan jawaban akhir. Kamu WAJIB menjabarkan proses berpikirmu secara bertahap (langkah demi langkah) di dalam struktur analisis internal menggunakan metode Chain of Thought.",
-      temperature: 0.1,
+    //  thinkingLevel: "high",
       responseMimeType: "application/json",
       responseSchema: {
         type: Type.OBJECT,
