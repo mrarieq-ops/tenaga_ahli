@@ -46,6 +46,7 @@ export default function App() {
   const [qualificationDoc, setQualificationDoc] = useState<DocState>({ file: null, text: "" });
   
   const [isExtracting, setIsExtracting] = useState(false);
+  const [isCheckingPageCount, setIsCheckingPageCount] = useState(false);
   const [isEvaluating, setIsEvaluating] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [result, setResult] = useState<EvaluationResult | null>(null);
@@ -103,9 +104,9 @@ export default function App() {
         
         // Check page count limit
         const { getPdfPageCount } = await import("./lib/pdfExtractor");
-        setIsExtracting(true);
+        setIsCheckingPageCount(true);
         const pageCount = await getPdfPageCount(file);
-        setIsExtracting(false);
+        setIsCheckingPageCount(false);
 
         if (pageCount > 75) {
           setError(`File "${file.name}" memiliki ${pageCount} halaman. Batas maksimal adalah 75 halaman per tenaga ahli.`);
@@ -116,7 +117,7 @@ export default function App() {
         setError(null);
       }
     } catch (err) {
-      setIsExtracting(false);
+      setIsCheckingPageCount(false);
       setError("Gagal memilih file Data Kualifikasi tenaga ahli.");
     }
   };
@@ -856,17 +857,20 @@ export default function App() {
         <div className="mt-12 flex flex-col items-center justify-center gap-6">
           <button
             onClick={handleStartEvaluation}
-            disabled={isExtracting || isEvaluating}
+            disabled={isExtracting || isEvaluating || isCheckingPageCount}
             className={cn(
               "relative px-12 py-5 rounded-2xl font-black text-lg tracking-tight transition-all duration-300 shadow-xl shadow-blue-500/20 active:scale-95 group",
-              isExtracting || isEvaluating ? "bg-gray-200 text-gray-400 cursor-not-allowed" : "bg-blue-600 text-white hover:bg-blue-700 hover:-translate-y-1"
+              isExtracting || isEvaluating || isCheckingPageCount ? "bg-gray-200 text-gray-400 cursor-not-allowed" : "bg-blue-600 text-white hover:bg-blue-700 hover:-translate-y-1"
             )}
           >
             <div className="flex items-center gap-3">
-              {isExtracting || isEvaluating ? (
+              {isExtracting || isEvaluating || isCheckingPageCount ? (
                 <>
                   <Loader2 className="w-6 h-6 animate-spin" />
-                  <span>{isExtracting ? "Mengekstrak..." : "Menganalisis..."}</span>
+                  <span>
+                    {isCheckingPageCount ? "Mengecek Halaman..." : 
+                     isExtracting ? "Mengekstrak..." : "Menganalisis..."}
+                  </span>
                 </>
               ) : (
                 <>
@@ -877,9 +881,11 @@ export default function App() {
             </div>
           </button>
           
-          {(isExtracting || isEvaluating) && (
-            <p className="text-sm text-gray-500 animate-pulse font-medium">
-              Sedang memproses dokumen Anda menggunakan AI...
+          {(isExtracting || isEvaluating || isCheckingPageCount) && (
+            <p className="text-sm text-gray-500 animate-pulse font-medium text-center">
+              {isCheckingPageCount 
+                ? "Sedang mengecek jumlah halaman agar tidak melebihi 75 halaman..." 
+                : "Sedang memproses dokumen Anda menggunakan AI..."}
             </p>
           )}
           
@@ -947,7 +953,7 @@ export default function App() {
               <div className="space-y-6">
                 <div className="flex flex-col md:flex-row md:items-center justify-between gap-4 px-2">
                   <h3 className="text-xl font-black text-gray-900 flex items-center gap-2">
-                    Tabel Penilaian: Tingkat dan Jurusan Pendidikan
+                    Tingkat dan Jurusan Pendidikan
                     <ChevronRight className="w-5 h-5 text-gray-400" />
                   </h3>
                 </div>
@@ -983,7 +989,7 @@ export default function App() {
                             {result.educationAssessment.finalScore.toFixed(2)}
                           </span>
                         </td>
-                        <td className="px-6 py-6 text-[10px] text-gray-600 leading-relaxed max-w-xs italic">
+                        <td className="px-6 py-6 text-sm text-gray-600 leading-relaxed max-w-xs italic">
                           {result.educationAssessment.aiRemark}
                         </td>
                       </tr>
@@ -996,7 +1002,7 @@ export default function App() {
               <div className="space-y-6">
                 <div className="flex flex-col md:flex-row md:items-center justify-between gap-4 px-2">
                   <h3 className="text-xl font-black text-gray-900 flex items-center gap-2">
-                    Tabel Penilaian: Status Tenaga Ahli
+                    Status Tenaga Ahli
                     <ChevronRight className="w-5 h-5 text-gray-400" />
                   </h3>
                 </div>
@@ -1032,7 +1038,7 @@ export default function App() {
                             {result.statusAssessment.finalScore.toFixed(2)}
                           </span>
                         </td>
-                        <td className="px-6 py-6 text-[10px] text-gray-600 leading-relaxed max-w-xs italic">
+                        <td className="px-6 py-6 text-sm text-gray-600 leading-relaxed max-w-xs italic">
                           {result.statusAssessment.aiRemark}
                         </td>
                       </tr>
@@ -1045,7 +1051,7 @@ export default function App() {
               <div className="space-y-6">
                 <div className="flex flex-col md:flex-row md:items-center justify-between gap-4 px-2">
                   <h3 className="text-xl font-black text-gray-900 flex items-center gap-2">
-                    Tabel Penilaian: Subunsur Lain-lain
+                    Subunsur Lain-lain
                     <ChevronRight className="w-5 h-5 text-gray-400" />
                   </h3>
                 </div>
@@ -1088,7 +1094,7 @@ export default function App() {
                             {result.otherSubAssessment.finalScore.toFixed(2)}
                           </span>
                         </td>
-                        <td className="px-6 py-6 text-[10px] text-gray-600 leading-relaxed max-w-xs italic">
+                        <td className="px-6 py-6 text-sm text-gray-600 leading-relaxed max-w-xs italic">
                           {result.otherSubAssessment.aiRemark}
                         </td>
                       </tr>
@@ -1101,7 +1107,7 @@ export default function App() {
               <div className="space-y-6">
                 <div className="flex flex-col md:flex-row md:items-center justify-between gap-4 px-2">
                   <h3 className="text-xl font-black text-gray-900 flex items-center gap-2">
-                    Tabel Penilaian: Rincian Pengalaman Kerja Profesional
+                    Rincian Pengalaman Kerja Profesional
                     <ChevronRight className="w-5 h-5 text-gray-400" />
                   </h3>
                 </div>
@@ -1136,7 +1142,7 @@ export default function App() {
                               {exp.total.toFixed(2)}
                             </span>
                           </td>
-                          <td className="px-4 py-4 text-[10px] text-gray-500 italic leading-snug max-w-xs">
+                          <td className="px-4 py-4 text-sm text-gray-500 italic leading-snug max-w-xs">
                             {exp.aiRemark}
                           </td>
                         </tr>
@@ -1150,7 +1156,7 @@ export default function App() {
               <div className="space-y-6">
                 <div className="flex flex-col md:flex-row md:items-center justify-between gap-4 px-2">
                   <h3 className="text-xl font-black text-gray-900 flex items-center gap-2">
-                    Tabel Rekapitulasi Hasil Penilaian Tenaga Ahli
+                    Rekapitulasi Hasil Penilaian Tenaga Ahli
                     <ChevronRight className="w-5 h-5 text-gray-400" />
                   </h3>
                   

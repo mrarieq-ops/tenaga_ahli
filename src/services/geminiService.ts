@@ -107,9 +107,7 @@ export async function evaluateQualification(
        - Bobot: Ambil bobot persentase untuk unsur Subunsur Lain-lain dari Bab VI. **WAJIB DALAM BENTUK DESIMAL**.
        - Nilai Akhir: Nilai x Bobot.
        - Keterangan AI: Penjelasan mengenai penilaian dan lampiran Subunsur Lain-lain.
-    6. PENILAIAN UNSUR LAINNYA: 
-       - Tetap nilai unsur lain seperti Sertifikat/SKA sesuai kriteria Bab VI.
-       - Bobot tiap kriteria: **WAJIB DALAM BENTUK DESIMAL (Misal: 0.20 untuk 20%)**.
+    6. Bobot tiap kriteria: **WAJIB DALAM BENTUK DESIMAL (Misal: 0.20 untuk 20%)**.
     7. SKOR DISKRIT (WAJIB): Gunakan HANYA skor yang secara eksplisit tertulis di Dokumen Seleksi pada Bab VI untuk bagian skor kriteria utama.
     8. PERHITUNGAN TOTAL: Hitung "overallScore" sebagai TOTAL hasil penjumlahan seluruh "Nilai Akhir" pada TABEL REKAPITULASI NILAI TENAGA AHLI.
 
@@ -166,14 +164,6 @@ export async function evaluateQualification(
           "bobot": number,
           "nilaiAkhir": number,
           "justification": "Analisis pengalaman..."
-        },
-        {
-          "no": 3,
-          "name": "Sertifikat Keahlian",
-          "score": number,
-          "bobot": number,
-          "nilaiAkhir": number,
-          "justification": "Analisis SKA/SKK..."
         }
       ],
       "summary": "Ringkasan kualifikasi [Nama] untuk posisi [Posisi]..."
