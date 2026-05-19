@@ -73,9 +73,8 @@ async function extractExperiences(qualificationText: string): Promise<ExtractedE
 
     ATURAN:
     1. Ekstrak SEMUA pengalaman tanpa terkecuali. Jangan meringkas atau melewati baris mana pun.
-    2. Jika terdapat 33 pengalaman, Anda harus mengekstrak 33 baris tersebut.
-    3. Nama Paket harus sesuai dengan yang tertulis.
-    4. Tanggal harus diekstrak apa adanya (misal DD-MM-YYYY, atau hanya MM-YYYY, atau hanya YYYY).
+    2. Nama Paket harus sesuai dengan yang tertulis.
+    3. Tanggal harus diekstrak apa adanya (misal DD-MM-YYYY, atau hanya MM-YYYY, atau hanya YYYY).
 
     FORMAT OUTPUT (JSON ARRAY):
     [
@@ -122,14 +121,14 @@ export async function evaluateQualification(
 ): Promise<EvaluationResult> {
   const model = "gemini-3-flash-preview";
 
-  if (onProgress) onProgress("Tahap 1: Mengekstrak seluruh daftar pengalaman profesional...");
+  if (onProgress) onProgress("Tahap 1: Sedang membaca seluruh data yang diunggah...");
   const rawExperiences = await extractExperiences(qualificationText);
   
-  if (onProgress) onProgress("Tahap 2: Menganalisis kualifikasi dan menghitung skor...");
+  if (onProgress) onProgress("Tahap 2: Menganalisis data tenaga ahli, perkiraan waktu 1 - 3 menit");
 
   const prompt = `
     Anda adalah asisten ahli Pokja Pemilihan Jasa Konsultansi Konstruksi.
-    Tugas Anda adalah menilai Data Kualifikasi Tenaga Ahli secara mendetail berdasarkan kriteria yang ada di Dokumen Seleksi (BAB VI Lembar Kriteria Evaluasi) dan Kerangka Acuan Kerja (KAK).
+    Tugas Anda adalah menilai Data Kualifikasi Tenaga Ahli secara mendetail berdasarkan kriteria yang ada di Dokumen Seleksi pada BAB VI Lembar Kriteria Evaluasi.
 
     DATA DASAR:
     1. DOKUMEN SELEKSI (BAB VI): ${selectionDocText.substring(0, 120000)}
@@ -140,31 +139,31 @@ export async function evaluateQualification(
     ${JSON.stringify(rawExperiences)}
 
     TUGAS UTAMA:
-    Gunakan daftar pengalaman yang sudah diekstrak di atas sebagai basis. Berikan penilaian untuk SETIAP baris pengalaman tersebut.
+    Gunakan daftar pengalaman yang sudah diekstrak di atas sebagai basis penilaian pengalaman profesional tenaga ahli. Berikan penilaian untuk SETIAP baris pengalaman tersebut.
 
     ATURAN PENILAIAN SANGAT KETAT (MANDATORY):
-    1. IDENTIFIKASI TENAGA AHLI: Dari Data CV, ambil Nama personil & Posisi yang Diusulkan.
+    1. IDENTIFIKASI TENAGA AHLI: Dari Data CV, ambil Nama personil & Posisi penugasan yang Diusulkan.
     2. PENILAIAN UNSUR "TINGKAT DAN JURUSAN PENDIDIKAN":
-       - Persyaratan Pendidikan dalam KAK: Ambil/ekstrak dari Dokumen KAK sesuai dengan "Posisi yang diusulkan" (misal: S1 Teknik Sipil).
+       - Persyaratan Pendidikan dalam KAK: Ambil dari KAK sesuai dengan "Posisi yang diusulkan".
        - Pendidikan TA yang ditawarkan: Ambil dari Data Kualifikasi/CV tenaga ahli.
-       - Nilai: Berikan skor berdasarkan ketentuan "Kriteria Penilaian" di Bab VI. **PENTING: Cek apakah terdapat lampiran ijazah yang valid sesuai pendidikan yang ditawarkan.**
+       - Nilai: Berikan skor berdasarkan ketentuan "Kriteria Penilaian" di Bab VI. **PENTING: Cek apakah terdapat lampiran scan ijazah yang valid sesuai pendidikan yang ditawarkan.**
        - Bobot: Ambil bobot persentase untuk unsur Pendidikan dari Bab VI.
        - Nilai Akhir: Nilai x Bobot.
-       - Keterangan AI: Penjelasan detail mengapa nilai tersebut diberikan (analisis kesesuaian dan keberadaan ijazah).
+       - Keterangan AI: Penjelasan detail mengapa nilai tersebut diberikan (analisis kesesuaian dan keberadaan scan ijazah).
     3. PENILAIAN UNSUR "STATUS TENAGA AHLI" (DETAIL):
-       - Bukti Potong/Lapor Pajak PPh 21: Isi "Ada dan mencantumkan nama jelas serta nama perusahaan yang sama dengan nama perusahaan peserta" jika ditemukan bukti pemotongan pajak penghasilan pasal 21 (BPA1) atas nama tenaga ahli dan perusahaan yang bersangkutan. Jika tidak ada/tidak sesuai, isi "Tidak ada / tidak mencantumkan nama jelas atau nama perusahaan berbeda dengan nama perusahaan peserta".
-       - Status Tenaga Ahli: Isi "Tenaga Ahli tetap" jika bukti pemotongan pajak pasal 21 (BPA1) ada dan valid. Jika tidak, isi "Tenaga ahli tidak tetap".
+       - Bukti Potong/Lapor Pajak PPh 21: Isi "Ada dan mencantumkan nama jelas serta nama perusahaan yang sama dengan nama perusahaan peserta" jika ditemukan scan pemotongan pajak penghasilan pasal 21 (BPA1) untuk Tenaga ahli. Jika tidak ada, isi "Tidak ada / tidak mencantumkan nama jelas atau nama perusahaan berbeda dengan nama perusahaan peserta".
+       - Status Tenaga Ahli: Isi "Tenaga Ahli tetap" jika ditemukan pemotongan pajak pasal 21 (BPA1). Jika tidak, isi "Tenaga ahli tidak tetap".
        - Nilai: Berikan skor berdasarkan kriteria "Status tenaga ahli yang diusulkan" di Bab VI.
        - Bobot: Ambil bobot persentase untuk unsur Status Tenaga Ahli dari Bab VI.
        - Nilai Akhir: Nilai x Bobot.
-       - Keterangan AI: Penjelasan mengenai keberadaan bukti potong pajak penghasilan dan status tenaga ahli yang diberikan.
+       - Keterangan AI: Penjelasan mengenai keberadaan bukti scan potong pajak penghasilan dan status tenaga ahli yang diberikan.
     4. PENILAIAN UNSUR "SUBUNSUR LAIN-LAIN" (DETAIL):
        - Uraian Lain-lain: Isi dengan uraian di Subunsur Lain-lain dari Dokumen Seleksi Bab VI.
        - Penilaian: Isi "Memenuhi" jika dokumen yang dipersyaratkan (misalnya sertifikat kursus bahasa inggris, SKK) dilampirkan, "Tidak memenuhi" jika tidak ada,  "Memenuhi sebagian" jika melampirkan sebagian.
        - Nilai: Berikan skor berdasarkan kriteria "Subunsur lain-lain" di Bab VI.
        - Bobot: Ambil bobot persentase untuk unsur Subunsur Lain-lain dari Bab VI.
        - Nilai Akhir: Nilai x Bobot.
-       - Keterangan AI: Penjelasan mengenai penilaian dan lampiran Subunsur Lain-lain.
+       - Keterangan AI: Penjelasan mengenai penilaian dan scan lampiran Subunsur Lain-lain.
     5. PENGALAMAN PROFESIONAL (DETAIL):
        - Anda WAJIB memproses SEMUA baris pengalaman dari DAFTAR PENGALAMAN YANG SUDAH DIEKSTRAK.
        - Tgl Mulai & Tgl Selesai: Gunakan data yang sudah diekstrak.
@@ -173,11 +172,11 @@ export async function evaluateQualification(
          * ATURAN FORMAT TANGGAL:
            a. Jika hanya Bulan/Tahun (tanpa tgl): total bulan dikurangi 1.
            b. Jika hanya Tahun: hitung 25% dari total durasi tahun tersebut dalam bulan.
-       - Lingkup: Nilai 1 (sesuai), 0.75 (menunjang), 0.5 (tidak sesuai) berdasarkan kriteria Bab VI terhadap paket pekerjaan.
+       - Lingkup: Nilai 1 (sesuai), 0.75 (menunjang), 0.5 (tidak sesuai) berdasarkan kriteria Bab VI terhadap paket pekerjaan yang dinilai.
        - Posisi: Nilai 1 (sesuai posisi yang diusulkan), 0.5 (tidak sesuai) berdasarkan kriteria Bab VI.
-       - Referensi: Nilai 1 (ada lampiran referensi/kontrak), 0 (tidak ada).
+       - Referensi: Nilai 1 (ada lampiran scan referensi), 0 (tidak ada).
        - Jumlah: Bulan x Lingkup x Posisi x Referensi.
-       - Keterangan AI: tuliskan nama paket pekerjaan dan Justifikasi secara rinci mengenai penilaian lingkup dan posisi serta keberadaan referensi.
+       - Keterangan AI: tuliskan nama paket pekerjaan dan Justifikasi mengenai penilaian lingkup dan posisi serta keberadaan scan referensi.
     6. SKOR DISKRIT: Gunakan hanya skor (misal 100, 80, 50) yang tertulis di Bab VI.
     7. SYARAT KAK: Ekstrak jumlah tahun pengalaman minimum yang diminta (misal: 5 Tahun).
 

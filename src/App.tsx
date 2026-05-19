@@ -477,16 +477,16 @@ export default function App() {
     subTitleCell.font = { ...titleStyle.font, size: 11 };
     ws.getRow(2).height = 25;
 
-    ws.getCell('A4').value = 'Tanggal Laporan:';
-    ws.getCell('B4').value = new Date().toLocaleDateString("id-ID");
+    ws.getCell('A4').value = 'Tanggal Laporan';
+    ws.getCell('C4').value = `: ${new Date().toLocaleDateString("id-ID")}`;
     ws.getCell('A4').font = { bold: true };
 
-    ws.getCell('A5').value = 'Nama Personil:';
-    ws.getCell('B5').value = result.personnelName;
+    ws.getCell('A5').value = 'Nama Personil';
+    ws.getCell('C5').value = `: ${result.personnelName}`;
     ws.getCell('A5').font = { bold: true };
 
-    ws.getCell('A6').value = 'Posisi yang Diusulkan:';
-    ws.getCell('B6').value = result.proposedPosition;
+    ws.getCell('A6').value = 'Posisi yang Diusulkan';
+    ws.getCell('C6').value = `: ${result.proposedPosition}`;
     ws.getCell('A6').font = { bold: true };
 
     let currentRow = 8;
@@ -494,7 +494,7 @@ export default function App() {
     // --- SECTION 1: PENDIDIKAN ---
     ws.mergeCells(`A${currentRow}:I${currentRow}`);
     const eduTitle = ws.getCell(`A${currentRow}`);
-    eduTitle.value = '1. TABEL PENILAIAN PENDIDIKAN';
+    eduTitle.value = '1. TINGKAT DAN JURUSAN PENDIDIKAN';
     eduTitle.style = sectionTitleStyle;
     currentRow++;
 
@@ -539,7 +539,7 @@ export default function App() {
 
     // --- SECTION 2: STATUS ---
     ws.mergeCells(`A${currentRow}:I${currentRow}`);
-    ws.getCell(`A${currentRow}`).value = '2. TABEL PENILAIAN STATUS TENAGA AHLI';
+    ws.getCell(`A${currentRow}`).value = '2. STATUS TENAGA AHLI';
     ws.getCell(`A${currentRow}`).style = sectionTitleStyle;
     currentRow++;
 
@@ -576,7 +576,7 @@ export default function App() {
 
     // --- SECTION 3: SUBUNSUR LAIN ---
     ws.mergeCells(`A${currentRow}:I${currentRow}`);
-    ws.getCell(`A${currentRow}`).value = '3. TABEL PENILAIAN SUBUNSUR LAIN-LAIN';
+    ws.getCell(`A${currentRow}`).value = '3. SUBUNSUR LAIN-LAIN';
     ws.getCell(`A${currentRow}`).style = sectionTitleStyle;
     currentRow++;
 
@@ -613,7 +613,7 @@ export default function App() {
 
     // --- SECTION 4: PENGALAMAN ---
     ws.mergeCells(`A${currentRow}:I${currentRow}`);
-    ws.getCell(`A${currentRow}`).value = '4. TABEL RINCIAN PENGALAMAN KERJA PROFESIONAL';
+    ws.getCell(`A${currentRow}`).value = '4. RINCIAN PENGALAMAN KERJA PROFESIONAL';
     ws.getCell(`A${currentRow}`).style = sectionTitleStyle;
     currentRow++;
 
@@ -688,16 +688,16 @@ export default function App() {
     currentRow++;
 
     ws.getCell(`A${currentRow}`).value = 'Skor Akhir (Total):';
-    ws.getCell(`B${currentRow}`).value = result.overallScore;
+    ws.getCell(`C${currentRow}`).value = result.overallScore;
     ws.getCell(`A${currentRow}`).font = { bold: true };
-    ws.getCell(`B${currentRow}`).font = { bold: true, size: 12, color: { argb: 'FFC16C00' } };
+    ws.getCell(`C${currentRow}`).font = { bold: true, size: 12, color: { argb: 'FFC16C00' } };
     currentRow++;
 
     ws.getCell(`A${currentRow}`).value = 'Ringkasan:';
     ws.getCell(`A${currentRow}`).font = { bold: true };
-    ws.mergeCells(`B${currentRow}:I${currentRow + 2}`);
-    ws.getCell(`B${currentRow}`).value = result.summary;
-    ws.getCell(`B${currentRow}`).style = bodyStyle;
+    ws.mergeCells(`C${currentRow}:I${currentRow + 2}`);
+    ws.getCell(`C${currentRow}`).value = result.summary;
+    ws.getCell(`C${currentRow}`).style = bodyStyle;
     currentRow += 3;
 
     const rekapHeadRow = ws.getRow(currentRow);
