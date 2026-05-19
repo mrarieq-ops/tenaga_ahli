@@ -53,6 +53,7 @@ export interface EvaluationResult {
     justification: string;
   }[];
   summary: string;
+  requiredExperience?: string;
 }
 
 export async function evaluateQualification(
@@ -73,7 +74,7 @@ export async function evaluateQualification(
 
     ATURAN PENILAIAN SANGAT KETAT (MANDATORY):
     1. IDENTIFIKASI TENAGA AHLI: 
-       - Cari "Nama Personil" tenaga ahli.
+       - Cari "Nama Personil" tenaga ahli dari Data Kualifikasi/CV tenaga ahli.
        - Cari "Posisi yang diusulkan" untuk tenaga ahli tersebut.
     2. PENILAIAN UNSUR "TINGKAT DAN JURUSAN PENDIDIKAN":
        - Persyaratan Pendidikan dalam KAK: Ambil/ekstrak dari Dokumen KAK sesuai dengan "Posisi yang diusulkan" (misal: S1 Teknik Sipil).
@@ -86,13 +87,17 @@ export async function evaluateQualification(
        - Ekstrak **SEMUA** rincian pengalaman kerja tenaga ahli dari Data Kualifikasi/CV.
        - Tgl Mulai & Tgl Selesai: Ambil dari CV.
        - Bulan: Hitung selisih bulan (Selesai - Mulai).
+         * ATURAN TAMBAHAN PERHITUNGAN BULAN:
+         1. Apabila terjadi overlap dengan periode pelaksanaan sebelumnya, yang dihitung hanya tanggal yang tidak overlap.
+         2. Apabila tertulis hanya bulan dan tahunnya saja (tanpa tanggal) maka total bulannya dikurangi 1.
+         3. Apabila tertulis tahunnya saja (tanpa tanggal dan bulan) maka yang dihitung hanya 25% dari total bulannya.
        - Lingkup: Nilai 1 (sesuai), 0.75 (menunjang), 0.5 (tidak sesuai) berdasarkan kriteria Bab VI terhadap paket pekerjaan.
        - Posisi: Nilai 1 (sesuai posisi yang diusulkan), 0.5 (tidak sesuai) berdasarkan kriteria Bab VI.
        - Referensi: Nilai 1 (ada lampiran referensi/kontrak), 0 (tidak ada).
        - Jumlah: Bulan x Lingkup x Posisi x Referensi.
-       - Keterangan AI: tuliskan nama paket pekerjaan dan Justifikasi secara rinci mengenai penilaian lingkup dan posisi serta keberadaan referensi.
+       - Keterangan AI: tuliskan nama paket pekerjaan dan Justifikasi secara rinci mengenai penilaian, lingkup dan posisi serta keberadaan referensi.
     4. PENILAIAN UNSUR "STATUS TENAGA AHLI" (DETAIL):
-       - Identifikasi lampiran Bukti Pemotongan Pajak Penghasilan Pasal 21 (BPA1).
+       - Identifikasi lampiran Bukti Pemotongan Pajak Penghasilan Pasal 21 (BPA1) dari Data Kualifikasi/CV.
        - Bukti Potong/Lapor Pajak PPh 21: Isi "Ada dan mencantumkan nama jelas serta nama perusahaan yang sama dengan nama perusahaan peserta" jika ditemukan bukti pemotongan pajak penghasilan pasal 21 (BPA1) atas nama tenaga ahli dan perusahaan yang bersangkutan. Jika tidak ada/tidak sesuai, isi "Tidak ada / tidak mencantumkan nama jelas atau nama perusahaan berbeda dengan nama perusahaan peserta".
        - Status Tenaga Ahli: Isi "Tenaga Ahli tetap" jika bukti pemotongan pajak pasal 21 (BPA1) ada dan valid. Jika tidak, isi "Tenaga ahli tidak tetap".
        - Nilai: Berikan skor berdasarkan kriteria "Status tenaga ahli yang diusulkan" di Bab VI.
@@ -100,15 +105,15 @@ export async function evaluateQualification(
        - Nilai Akhir: Nilai x Bobot.
        - Keterangan AI: Penjelasan mengenai keberadaan bukti potong pajak penghasilan dan status tenaga ahli yang diberikan.
     5. PENILAIAN UNSUR "SUBUNSUR LAIN-LAIN" (DETAIL):
-       - Identifikasi uraian di Subunsur Lain-lain dari KAK/Dokumen Seleksi.
+       - Identifikasi uraian di Subunsur Lain-lain dari Dokumen Seleksi Bab VI.
        - Uraian Lain-lain: Isi dengan deskripsi subunsur tersebut.
        - Penilaian: Isi "Memenuhi" jika dokumen yang dipersyaratkan (misalnya sertifikat kursus bahasa inggris, SKK) dilampirkan, "Tidak memenuhi" jika tidak ada,  "Memenuhi sebagian" jika melampirkan sebagian.
        - Nilai: Berikan skor berdasarkan kriteria "Subunsur lain-lain" di Bab VI.
        - Bobot: Ambil bobot persentase untuk unsur Subunsur Lain-lain dari Bab VI. **WAJIB DALAM BENTUK DESIMAL**.
        - Nilai Akhir: Nilai x Bobot.
        - Keterangan AI: Penjelasan mengenai penilaian dan lampiran Subunsur Lain-lain.
-    6. Bobot tiap kriteria: **WAJIB DALAM BENTUK DESIMAL (Misal: 0.20 untuk 20%)**.
-    7. SKOR DISKRIT (WAJIB): Gunakan HANYA skor yang secara eksplisit tertulis di Dokumen Seleksi pada Bab VI untuk bagian skor kriteria utama.
+    6. SKOR DISKRIT (WAJIB): Gunakan HANYA skor yang secara eksplisit tertulis di Dokumen Seleksi pada Bab VI untuk bagian skor kriteria utama.
+    7. EVALUASI SYARAT PENGALAMAN: Ekstrak jumlah tahun pengalaman minimum yang disyaratkan dalam KAK untuk posisi ini (misal: "5 Tahun").
     8. PERHITUNGAN TOTAL: Hitung "overallScore" sebagai TOTAL hasil penjumlahan seluruh "Nilai Akhir" pada TABEL REKAPITULASI NILAI TENAGA AHLI.
 
     FORMAT OUTPUT (JSON):
@@ -166,7 +171,8 @@ export async function evaluateQualification(
           "justification": "Analisis pengalaman..."
         }
       ],
-      "summary": "Ringkasan kualifikasi [Nama] untuk posisi [Posisi]..."
+      "summary": "Ringkasan kualifikasi [Nama] untuk posisi [Posisi]...",
+      "requiredExperience": "Misal: 5 Tahun"
     }
   `;
 
@@ -255,9 +261,10 @@ export async function evaluateQualification(
               required: ["no", "name", "score", "bobot", "nilaiAkhir", "justification"]
             }
           },
-          summary: { type: Type.STRING }
+          summary: { type: Type.STRING },
+          requiredExperience: { type: Type.STRING }
         },
-        required: ["personnelName", "proposedPosition", "overallScore", "educationAssessment", "statusAssessment", "otherSubAssessment", "experienceAssessment", "criteriaScores", "summary"]
+        required: ["personnelName", "proposedPosition", "overallScore", "educationAssessment", "statusAssessment", "otherSubAssessment", "experienceAssessment", "criteriaScores", "summary", "requiredExperience"]
       }
     }
   });

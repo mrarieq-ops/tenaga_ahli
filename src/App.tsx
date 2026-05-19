@@ -30,6 +30,17 @@ import * as XLSX from "xlsx";
 import ExcelJS from "exceljs";
 import { saveAs } from "file-saver";
 
+const formatIndonesianDate = (dateStr: string) => {
+  if (!dateStr || dateStr === "-" || dateStr.toLowerCase() === "n/a") return dateStr;
+  try {
+    const date = new Date(dateStr);
+    if (isNaN(date.getTime())) return dateStr;
+    return date.toLocaleDateString("id-ID", { day: 'numeric', month: 'short', year: 'numeric' });
+  } catch {
+    return dateStr;
+  }
+};
+
 interface DocState {
   file: File | null;
   text: string;
@@ -320,8 +331,8 @@ export default function App() {
 
     const expData = result.experienceAssessment.map(exp => [
       exp.no,
-      exp.startDate,
-      exp.endDate,
+      formatIndonesianDate(exp.startDate),
+      formatIndonesianDate(exp.endDate),
       exp.months,
       exp.scope,
       exp.position,
@@ -391,14 +402,17 @@ export default function App() {
     workbook.created = new Date();
     workbook.modified = new Date();
 
+    const ws = workbook.addWorksheet('Laporan Penilaian');
+
+    // Styles
     const titleStyle: Partial<ExcelJS.Style> = {
       font: { name: 'Arial', family: 4, size: 14, bold: true, color: { argb: 'FFFFFFFF' } },
       fill: { type: 'pattern', pattern: 'solid', fgColor: { argb: 'FF808000' } }, // Olive Green
       alignment: { vertical: 'middle', horizontal: 'center' }
     };
 
-    const headerStyleUnderTitle: Partial<ExcelJS.Style> = {
-      font: { name: 'Arial', family: 4, size: 10, bold: true },
+    const sectionTitleStyle: Partial<ExcelJS.Style> = {
+      font: { name: 'Arial', family: 4, size: 11, bold: true },
       alignment: { vertical: 'middle', horizontal: 'left' }
     };
 
@@ -430,226 +444,313 @@ export default function App() {
         alignment: { vertical: 'middle', horizontal: 'center', wrapText: true }
     };
 
-    // --- Common Header Builder ---
-    const addStandardHeader = (sheet: ExcelJS.Worksheet, title: string) => {
-      let mergeRange = 'A1:G1';
-      let mergeSubRange = 'A2:G2';
+    // Column Widths (A to I)
+    ws.columns = [
+        { width: 5 },  // A: No
+        { width: 15 }, // B
+        { width: 15 }, // C
+        { width: 15 }, // D
+        { width: 15 }, // E
+        { width: 15 }, // F
+        { width: 15 }, // G
+        { width: 15 }, // H
+        { width: 30 }  // I: Keterangan (some used for merging)
+    ];
 
-      if (sheet.name === 'Pengalaman Kerja') {
-        mergeRange = 'A1:I1';
-        mergeSubRange = 'A2:I2';
-      } else if (sheet.name === 'Rekapitulasi Nilai') {
-        mergeRange = 'A1:F1';
-        mergeSubRange = 'A2:F2';
-      }
+    // --- REPORT HEADER ---
+    ws.mergeCells('A1:I1');
+    const titleCell = ws.getCell('A1');
+    titleCell.value = 'LAPORAN HASIL PENILAIAN KUALIFIKASI TENAGA AHLI';
+    titleCell.style = titleStyle;
+    ws.getRow(1).height = 35;
 
-      sheet.mergeCells(mergeRange);
-      const titleCell = sheet.getCell('A1');
-      titleCell.value = 'LAPORAN HASIL PENILAIAN KUALIFIKASI TENAGA AHLI';
-      titleCell.style = titleStyle;
+    ws.mergeCells('A2:I2');
+    const subTitleCell = ws.getCell('A2');
+    subTitleCell.value = 'Evaluasi Jasa Konsultansi Konstruksi';
+    subTitleCell.style = { ...titleStyle, fill: { type: 'pattern', pattern: 'solid', fgColor: { argb: 'FF556B2F' } } };
+    subTitleCell.font = { ...titleStyle.font, size: 11 };
+    ws.getRow(2).height = 25;
 
-      sheet.mergeCells(mergeSubRange);
-      const subTitleCell = sheet.getCell('A2');
-      subTitleCell.value = 'Evaluasi Jasa Konsultansi Konstruksi';
-      subTitleCell.style = { 
-        ...titleStyle, 
-        fill: { type: 'pattern', pattern: 'solid', fgColor: { argb: 'FF556B2F' } }
-      };
-      subTitleCell.font = { ...titleStyle.font, size: 11 };
+    ws.getCell('A4').value = 'Tanggal Laporan:';
+    ws.getCell('B4').value = new Date().toLocaleDateString("id-ID");
+    ws.getCell('A4').font = { bold: true };
 
-      sheet.getCell('A4').value = 'Tanggal Laporan:';
-      sheet.getCell('B4').value = new Date().toLocaleDateString("id-ID");
-      sheet.getCell('A4').font = { bold: true };
+    ws.getCell('A5').value = 'Nama Personil:';
+    ws.getCell('B5').value = result.personnelName;
+    ws.getCell('A5').font = { bold: true };
 
-      sheet.getCell('A5').value = 'Nama Personil:';
-      sheet.getCell('B5').value = result.personnelName;
-      sheet.getCell('A5').font = { bold: true };
+    ws.getCell('A6').value = 'Posisi yang Diusulkan:';
+    ws.getCell('B6').value = result.proposedPosition;
+    ws.getCell('A6').font = { bold: true };
 
-      sheet.getCell('A6').value = 'Posisi yang Diusulkan:';
-      sheet.getCell('B6').value = result.proposedPosition;
-      sheet.getCell('A6').font = { bold: true };
-
-      sheet.getRow(1).height = 30;
-      sheet.getRow(2).height = 20;
-    };
-
-    // --- WORKSHEET 1: Kualifikasi Dasar ---
-    const ws1 = workbook.addWorksheet('Kualifikasi Dasar');
-    addStandardHeader(ws1, 'Kualifikasi Dasar');
-    
     let currentRow = 8;
-    
-    // Pendidikan Table
-    ws1.mergeCells(`A${currentRow}:G${currentRow}`);
-    const eduTitle = ws1.getCell(`A${currentRow}`);
+
+    // --- SECTION 1: PENDIDIKAN ---
+    ws.mergeCells(`A${currentRow}:I${currentRow}`);
+    const eduTitle = ws.getCell(`A${currentRow}`);
     eduTitle.value = '1. TABEL PENILAIAN PENDIDIKAN';
-    eduTitle.font = { bold: true, size: 11 };
+    eduTitle.style = sectionTitleStyle;
     currentRow++;
 
-    const eduHeaders = ["No", "Persyaratan Pendidikan (KAK)", "Pendidikan TA Yang Ditawarkan", "Nilai", "Bobot (%)", "Nilai Akhir", "Keterangan AI"];
-    const eduRow = ws1.getRow(currentRow);
-    eduRow.values = eduHeaders;
-    eduRow.eachCell((cell) => cell.style = tableHeaderStyle('FF1976D2')); // Blue
-    currentRow++;
-
-    const eduDataRow = ws1.getRow(currentRow);
-    eduDataRow.values = [
-      result.educationAssessment.no,
-      result.educationAssessment.kakRequirement,
-      result.educationAssessment.offeredEducation,
-      result.educationAssessment.score,
-      (result.educationAssessment.weight * 100).toFixed(0),
-      result.educationAssessment.finalScore.toFixed(2),
-      result.educationAssessment.aiRemark
-    ];
-    eduDataRow.eachCell((cell, colNumber) => {
-        if ([1, 4, 5, 6].includes(colNumber)) cell.style = centerStyle;
-        else cell.style = bodyStyle;
-    });
-    currentRow += 2;
-
-    // Status Table
-    ws1.mergeCells(`A${currentRow}:G${currentRow}`);
-    const statusTitle = ws1.getCell(`A${currentRow}`);
-    statusTitle.value = '2. TABEL PENILAIAN STATUS TENAGA AHLI';
-    statusTitle.font = { bold: true, size: 11 };
-    currentRow++;
-
-    const statusHeaders = ["No", "Bukti Potong/Lapor Pajak PPh 21", "Status Tenaga Ahli", "Nilai", "Bobot (%)", "Nilai Akhir", "Keterangan AI"];
-    const statusRow = ws1.getRow(currentRow);
-    statusRow.values = statusHeaders;
-    statusRow.eachCell((cell) => cell.style = tableHeaderStyle('FF2E7D32')); // Green
-    currentRow++;
-
-    const statusDataRow = ws1.getRow(currentRow);
-    statusDataRow.values = [
-      result.statusAssessment.no,
-      result.statusAssessment.taxProof,
-      result.statusAssessment.employmentStatus,
-      result.statusAssessment.score,
-      (result.statusAssessment.weight * 100).toFixed(0),
-      result.statusAssessment.finalScore.toFixed(2),
-      result.statusAssessment.aiRemark
-    ];
-    statusDataRow.eachCell((cell, colNumber) => {
-        if ([1, 4, 5, 6].includes(colNumber)) cell.style = centerStyle;
-        else cell.style = bodyStyle;
-    });
-    currentRow += 2;
-
-    // Subunsur Table
-    ws1.mergeCells(`A${currentRow}:G${currentRow}`);
-    const otherTitle = ws1.getCell(`A${currentRow}`);
-    otherTitle.value = '3. TABEL PENILAIAN SUBUNSUR LAIN-LAIN';
-    otherTitle.font = { bold: true, size: 11 };
-    currentRow++;
-
-    const otherHeaders = ["No", "Uraian Lain-lain", "Penilaian", "Nilai", "Bobot (%)", "Nilai Akhir", "Keterangan AI"];
-    const otherRow = ws1.getRow(currentRow);
-    otherRow.values = otherHeaders;
-    otherRow.eachCell((cell) => cell.style = tableHeaderStyle('FFF57C00')); // Orange
-    currentRow++;
-
-    const otherDataRow = ws1.getRow(currentRow);
-    otherDataRow.values = [
-      result.otherSubAssessment.no,
-      result.otherSubAssessment.description,
-      result.otherSubAssessment.evaluation,
-      result.otherSubAssessment.score,
-      (result.otherSubAssessment.weight * 100).toFixed(0),
-      result.otherSubAssessment.finalScore.toFixed(2),
-      result.otherSubAssessment.aiRemark
-    ];
-    otherDataRow.eachCell((cell, colNumber) => {
-        if ([1, 4, 5, 6].includes(colNumber)) cell.style = centerStyle;
-        else cell.style = bodyStyle;
-    });
-
-    ws1.columns = [
-        { width: 5 }, { width: 35 }, { width: 30 }, { width: 10 }, { width: 10 }, { width: 12 }, { width: 50 }
-    ];
-
-    // --- WORKSHEET 2: Rincian Pengalaman ---
-    const ws2 = workbook.addWorksheet('Pengalaman Kerja');
-    addStandardHeader(ws2, 'Rincian Pengalaman');
+    const eduHeaders = ["No", "Persyaratan Pendidikan (KAK)", "Pendidikan TA Ditawarkan", "Nilai", "Bobot", "Hasil", "Keterangan AI"];
+    // Note: Keterangan AI will use merged cells B-C etc for better spacing if needed, but let's try direct first
+    const eduHeadRow = ws.getRow(currentRow);
+    // Values mapped to columns A, B, C, D, E, F, G (we have I in total)
+    // We'll merge G:I for Keterangan AI
+    eduHeadRow.getCell(1).value = "No";
+    eduHeadRow.getCell(2).value = "Persyaratan Pendidikan (KAK)";
+    eduHeadRow.getCell(3).value = "Pendidikan TA Ditawarkan";
+    eduHeadRow.getCell(4).value = "Nilai";
+    eduHeadRow.getCell(5).value = "Bobot";
+    eduHeadRow.getCell(6).value = "Hasil";
+    ws.mergeCells(`G${currentRow}:I${currentRow}`);
+    eduHeadRow.getCell(7).value = "Keterangan AI";
     
-   // ws2.mergeCells('A1:I1');
-   // ws2.mergeCells('A2:I2');
-    ws2.mergeCells('A8:I8');
-    ws2.getCell('A8').value = '4. TABEL RINCIAN PENGALAMAN KERJA PROFESIONAL';
-    ws2.getCell('A8').font = { bold: true, size: 11 };
+    eduHeadRow.eachCell((cell) => {
+      if (cell.value) cell.style = tableHeaderStyle('FF1976D2');
+    });
+    currentRow++;
 
-    const expHeaders = ["No", "Tgl Mulai", "Tgl Selesai", "Bulan", "Lingkup", "Posisi", "Referensi", "Total Score", "Keterangan AI"];
-    const expRow = ws2.getRow(9);
-    expRow.values = expHeaders;
-    expRow.eachCell((cell) => cell.style = tableHeaderStyle('FF1565C0'));
+    const eduData = ws.getRow(currentRow);
+    eduData.getCell(1).value = result.educationAssessment.no;
+    eduData.getCell(2).value = result.educationAssessment.kakRequirement;
+    eduData.getCell(3).value = result.educationAssessment.offeredEducation;
+    eduData.getCell(4).value = result.educationAssessment.score;
+    eduData.getCell(5).value = result.educationAssessment.weight;
+    eduData.getCell(6).value = result.educationAssessment.finalScore;
+    ws.mergeCells(`G${currentRow}:I${currentRow}`);
+    eduData.getCell(7).value = result.educationAssessment.aiRemark;
 
-    result.experienceAssessment.forEach((exp, index) => {
-        const row = ws2.getRow(10 + index);
-        row.values = [
-            exp.no,
-            exp.startDate,
-            exp.endDate,
-            exp.months,
-            exp.scope,
-            exp.position,
-            exp.reference,
-            exp.total.toFixed(2),
-            exp.aiRemark
-        ];
-        row.eachCell((cell, colNumber) => {
-            if ([1, 2, 3, 4, 5, 6, 7, 8].includes(colNumber)) cell.style = centerStyle;
-            else cell.style = bodyStyle;
-        });
+    eduData.eachCell((cell, col) => {
+      if (col === 1 || col === 4 || col === 5 || col === 6) {
+        cell.style = { ...centerStyle };
+        if (col === 5) cell.numFmt = '0%';
+      } else {
+        cell.style = { ...bodyStyle };
+      }
+    });
+    currentRow += 2;
+
+    // --- SECTION 2: STATUS ---
+    ws.mergeCells(`A${currentRow}:I${currentRow}`);
+    ws.getCell(`A${currentRow}`).value = '2. TABEL PENILAIAN STATUS TENAGA AHLI';
+    ws.getCell(`A${currentRow}`).style = sectionTitleStyle;
+    currentRow++;
+
+    const statusHeadRow = ws.getRow(currentRow);
+    statusHeadRow.getCell(1).value = "No";
+    statusHeadRow.getCell(2).value = "Bukti Pajak PPh 21";
+    statusHeadRow.getCell(3).value = "Status Tenaga Ahli";
+    statusHeadRow.getCell(4).value = "Nilai";
+    statusHeadRow.getCell(5).value = "Bobot";
+    statusHeadRow.getCell(6).value = "Hasil";
+    ws.mergeCells(`G${currentRow}:I${currentRow}`);
+    statusHeadRow.getCell(7).value = "Keterangan AI";
+    statusHeadRow.eachCell(cell => { if(cell.value) cell.style = tableHeaderStyle('FF2E7D32') });
+    currentRow++;
+
+    const statusData = ws.getRow(currentRow);
+    statusData.getCell(1).value = result.statusAssessment.no;
+    statusData.getCell(2).value = result.statusAssessment.taxProof;
+    statusData.getCell(3).value = result.statusAssessment.employmentStatus;
+    statusData.getCell(4).value = result.statusAssessment.score;
+    statusData.getCell(5).value = result.statusAssessment.weight;
+    statusData.getCell(6).value = result.statusAssessment.finalScore;
+    ws.mergeCells(`G${currentRow}:I${currentRow}`);
+    statusData.getCell(7).value = result.statusAssessment.aiRemark;
+    statusData.eachCell((cell, col) => {
+      if (col === 1 || col === 4 || col === 5 || col === 6) {
+        cell.style = { ...centerStyle };
+        if (col === 5) cell.numFmt = '0%';
+      } else {
+        cell.style = { ...bodyStyle };
+      }
+    });
+    currentRow += 2;
+
+    // --- SECTION 3: SUBUNSUR LAIN ---
+    ws.mergeCells(`A${currentRow}:I${currentRow}`);
+    ws.getCell(`A${currentRow}`).value = '3. TABEL PENILAIAN SUBUNSUR LAIN-LAIN';
+    ws.getCell(`A${currentRow}`).style = sectionTitleStyle;
+    currentRow++;
+
+    const otherHeadRow = ws.getRow(currentRow);
+    otherHeadRow.getCell(1).value = "No";
+    otherHeadRow.getCell(2).value = "Uraian Lain-lain";
+    otherHeadRow.getCell(3).value = "Penilaian";
+    otherHeadRow.getCell(4).value = "Nilai";
+    otherHeadRow.getCell(5).value = "Bobot";
+    otherHeadRow.getCell(6).value = "Hasil";
+    ws.mergeCells(`G${currentRow}:I${currentRow}`);
+    otherHeadRow.getCell(7).value = "Keterangan AI";
+    otherHeadRow.eachCell(cell => { if(cell.value) cell.style = tableHeaderStyle('FFF57C00') });
+    currentRow++;
+
+    const otherData = ws.getRow(currentRow);
+    otherData.getCell(1).value = result.otherSubAssessment.no;
+    otherData.getCell(2).value = result.otherSubAssessment.description;
+    otherData.getCell(3).value = result.otherSubAssessment.evaluation;
+    otherData.getCell(4).value = result.otherSubAssessment.score;
+    otherData.getCell(5).value = result.otherSubAssessment.weight;
+    otherData.getCell(6).value = result.otherSubAssessment.finalScore;
+    ws.mergeCells(`G${currentRow}:I${currentRow}`);
+    otherData.getCell(7).value = result.otherSubAssessment.aiRemark;
+    otherData.eachCell((cell, col) => {
+      if (col === 1 || col === 4 || col === 5 || col === 6) {
+        cell.style = { ...centerStyle };
+        if (col === 5) cell.numFmt = '0%';
+      } else {
+        cell.style = { ...bodyStyle };
+      }
+    });
+    currentRow += 2;
+
+    // --- SECTION 4: PENGALAMAN ---
+    ws.mergeCells(`A${currentRow}:I${currentRow}`);
+    ws.getCell(`A${currentRow}`).value = '4. TABEL RINCIAN PENGALAMAN KERJA PROFESIONAL';
+    ws.getCell(`A${currentRow}`).style = sectionTitleStyle;
+    currentRow++;
+
+    const expHeadRow = ws.getRow(currentRow);
+    expHeadRow.getCell(1).value = "No";
+    expHeadRow.getCell(2).value = "Tgl Mulai";
+    expHeadRow.getCell(3).value = "Tgl Selesai";
+    expHeadRow.getCell(4).value = "Bulan";
+    expHeadRow.getCell(5).value = "Lingkup";
+    expHeadRow.getCell(6).value = "Posisi";
+    expHeadRow.getCell(7).value = "Referensi";
+    expHeadRow.getCell(8).value = "Hasil";
+    expHeadRow.getCell(9).value = "Keterangan AI";
+    expHeadRow.eachCell(cell => cell.style = tableHeaderStyle('FF1565C0'));
+    currentRow++;
+
+    const expStartRow = currentRow;
+    result.experienceAssessment.forEach((exp) => {
+      const row = ws.getRow(currentRow);
+      row.values = [
+        exp.no,
+        formatIndonesianDate(exp.startDate),
+        formatIndonesianDate(exp.endDate),
+        exp.months,
+        exp.scope,
+        exp.position,
+        exp.reference,
+        parseFloat(exp.total.toFixed(2)),
+        exp.aiRemark
+      ];
+      row.eachCell((cell, col) => {
+        if (col < 9) cell.style = centerStyle;
+        else cell.style = bodyStyle;
+      });
+      currentRow++;
+    });
+    
+    // Add SUM Row for Table 4
+    const expSumRow = ws.getRow(currentRow);
+    ws.mergeCells(`A${currentRow}:G${currentRow}`);
+    expSumRow.getCell(1).value = "TOTAL BULAN PENGALAMAN ";
+    expSumRow.getCell(1).style = { ...tableHeaderStyle('FF1565C0'), alignment: { horizontal: 'right', vertical: 'middle' } };
+    expSumRow.getCell(8).value = { formula: `SUM(H${expStartRow}:H${currentRow - 1})` };
+    expSumRow.getCell(8).style = centerStyle;
+    expSumRow.getCell(8).font = { bold: true };
+    currentRow++;
+
+    const expYearRow = ws.getRow(currentRow);
+    ws.mergeCells(`A${currentRow}:G${currentRow}`);
+    expYearRow.getCell(1).value = "TOTAL TAHUN PENGALAMAN (BULAN / 12) ";
+    expYearRow.getCell(1).style = { ...bodyStyle, font: { ...bodyStyle.font, bold: true }, alignment: { horizontal: 'right' } };
+    expYearRow.getCell(8).value = { formula: `H${currentRow - 1}/12` };
+    expYearRow.getCell(8).numFmt = '0.00';
+    expYearRow.getCell(8).style = centerStyle;
+    expYearRow.getCell(8).font = { bold: true };
+    currentRow++;
+
+    const expReqRow = ws.getRow(currentRow);
+    ws.mergeCells(`A${currentRow}:G${currentRow}`);
+    expReqRow.getCell(1).value = "SYARAT PENGALAMAN SESUAI KAK ";
+    expReqRow.getCell(1).style = { ...bodyStyle, font: { ...bodyStyle.font, bold: true }, alignment: { horizontal: 'right' } };
+    expReqRow.getCell(8).value = result.requiredExperience || "-";
+    expReqRow.getCell(8).style = centerStyle;
+    expReqRow.getCell(8).font = { bold: true };
+    
+    currentRow += 2;
+
+    // --- SECTION 5: REKAPITULASI ---
+    ws.mergeCells(`A${currentRow}:I${currentRow}`);
+    ws.getCell(`A${currentRow}`).value = '5. REKAPITULASI NILAI TENAGA AHLI (SKOR AKHIR)';
+    ws.getCell(`A${currentRow}`).style = sectionTitleStyle;
+    currentRow++;
+
+    ws.getCell(`A${currentRow}`).value = 'Skor Akhir (Total):';
+    ws.getCell(`B${currentRow}`).value = result.overallScore;
+    ws.getCell(`A${currentRow}`).font = { bold: true };
+    ws.getCell(`B${currentRow}`).font = { bold: true, size: 12, color: { argb: 'FFC16C00' } };
+    currentRow++;
+
+    ws.getCell(`A${currentRow}`).value = 'Ringkasan:';
+    ws.getCell(`A${currentRow}`).font = { bold: true };
+    ws.mergeCells(`B${currentRow}:I${currentRow + 2}`);
+    ws.getCell(`B${currentRow}`).value = result.summary;
+    ws.getCell(`B${currentRow}`).style = bodyStyle;
+    currentRow += 3;
+
+    const rekapHeadRow = ws.getRow(currentRow);
+    rekapHeadRow.getCell(1).value = "No";
+    ws.mergeCells(`B${currentRow}:D${currentRow}`);
+    rekapHeadRow.getCell(2).value = "Unsur Yang Dinilai";
+    rekapHeadRow.getCell(5).value = "Nilai";
+    rekapHeadRow.getCell(6).value = "Bobot";
+    rekapHeadRow.getCell(7).value = "Hasil";
+    ws.mergeCells(`H${currentRow}:I${currentRow}`);
+    rekapHeadRow.getCell(8).value = "Justifikasi";
+    rekapHeadRow.eachCell(cell => { if(cell.value) cell.style = tableHeaderStyle('FF424242') });
+    currentRow++;
+
+    const rekapStartRow = currentRow;
+    result.criteriaScores.forEach((item) => {
+      const row = ws.getRow(currentRow);
+      row.height = 75;
+      row.getCell(1).value = item.no;
+      ws.mergeCells(`B${currentRow}:D${currentRow}`);
+      row.getCell(2).value = item.name;
+      row.getCell(5).value = item.score;
+      row.getCell(6).value = item.bobot;
+      row.getCell(7).value = item.nilaiAkhir;
+      ws.mergeCells(`H${currentRow}:I${currentRow}`);
+      const justificationCell = row.getCell(8);
+      justificationCell.value = item.justification;
+      
+      // Explicitly set alignment for the justification cell as wrapText might be lost on merge
+      justificationCell.style = bodyStyle;
+
+      row.eachCell((cell, col) => {
+        if ([1, 5, 6, 7].includes(col)) {
+          cell.style = { ...centerStyle };
+          if (col === 6) cell.numFmt = '0%';
+        } else if ([2, 8].includes(col)) {
+          cell.style = { ...bodyStyle };
+        } else {
+          cell.style = { ...bodyStyle };
+        }
+      });
+      currentRow++;
     });
 
-    ws2.columns = [
-        { width: 5 }, { width: 12 }, { width: 12 }, { width: 8 }, { width: 8 }, { width: 8 }, { width: 10 }, { width: 12 }, { width: 70 }
-    ];
+    // Add TOTAL ROW for Table 5
+    const rekapSumRow = ws.getRow(currentRow);
+    ws.mergeCells(`A${currentRow}:F${currentRow}`);
+    rekapSumRow.getCell(1).value = "TOTAL SKOR AKHIR ";
+    rekapSumRow.getCell(1).style = { ...tableHeaderStyle('FF424242'), alignment: { horizontal: 'right', vertical: 'middle' } };
+    rekapSumRow.getCell(7).value = { formula: `SUM(G${rekapStartRow}:G${currentRow - 1})` };
+    rekapSumRow.getCell(7).style = { ...centerStyle, font: { bold: true, size: 14 } };
+    currentRow++;
 
-    // --- WORKSHEET 3: Rekapitulasi Nilai ---
-    const ws3 = workbook.addWorksheet('Rekapitulasi Nilai');
-    addStandardHeader(ws3, 'Rekapitulasi');
-
-    ws3.mergeCells('A8:F8');
-    ws3.getCell('A8').value = '5. REKAPITULASI NILAI TENAGA AHLI (SKOR AKHIR)';
-    ws3.getCell('A8').font = { bold: true, size: 11 };
-
-    ws3.getCell('A10').value = 'Skor Akhir (Total):';
-    ws3.getCell('B10').value = result.overallScore;
-    ws3.getCell('A10').font = { bold: true };
-    ws3.getCell('B10').font = { bold: true, size: 13, color: { argb: 'FFC16C00' } };
-
-    ws3.getCell('A11').value = 'Ringkasan Analisis:';
-    ws3.getCell('A11').font = { bold: true };
-    ws3.mergeCells('B11:F12');
-    ws3.getCell('B11').value = result.summary;
-    ws3.getCell('B11').style = bodyStyle;
-
-    const rekapHeaders = ["No", "Unsur Yang Dinilai", "Nilai", "Bobot (%)", "Nilai Akhir", "Keterangan / Justifikasi"];
-    const rekapRow = ws3.getRow(14);
-    rekapRow.values = rekapHeaders;
-    rekapRow.eachCell((cell) => cell.style = tableHeaderStyle('FF424242'));
-
-    result.criteriaScores.forEach((item, index) => {
-        const row = ws3.getRow(15 + index);
-        row.values = [
-            item.no,
-            item.name,
-            item.score,
-            (item.bobot * 100).toFixed(0),
-            item.nilaiAkhir.toFixed(2),
-            item.justification
-        ];
-        row.eachCell((cell, colNumber) => {
-            if ([1, 3, 4, 5].includes(colNumber)) cell.style = centerStyle;
-            else cell.style = bodyStyle;
-        });
-    });
-
-    ws3.columns = [
-        { width: 5 }, { width: 40 }, { width: 10 }, { width: 10 }, { width: 12 }, { width: 60 }
-    ];
+    currentRow += 2;
+    ws.mergeCells(`A${currentRow}:I${currentRow}`);
+    const footer = ws.getCell(`A${currentRow}`);
+    footer.value = '--- Dicetak secara otomatis oleh AI ---';
+    footer.alignment = { horizontal: 'center' };
+    footer.font = { italic: true, size: 8, color: { argb: 'FF888888' } };
 
     // Final Touch
     const buffer = await workbook.xlsx.writeBuffer();
@@ -981,7 +1082,7 @@ export default function App() {
                             {result.educationAssessment.score}
                           </span>
                         </td>
-                        <td className="px-6 py-6 text-center text-xs font-bold text-gray-500">
+                        <td className="px-6 py-6 text-center text-sm font-bold text-gray-500">
                           {(result.educationAssessment.weight * 100).toFixed(0)}%
                         </td>
                         <td className="px-6 py-6 text-center">
@@ -1023,14 +1124,14 @@ export default function App() {
                     <tbody>
                       <tr className="hover:bg-blue-50/20 transition-colors">
                         <td className="px-6 py-6 text-sm font-bold text-gray-400">{result.statusAssessment.no}</td>
-                        <td className="px-6 py-6 font-bold text-gray-900 text-xs leading-tight">{result.statusAssessment.taxProof}</td>
+                        <td className="px-6 py-6 font-bold text-gray-900 text-sm leading-tight">{result.statusAssessment.taxProof}</td>
                         <td className="px-6 py-6 font-medium text-gray-700 text-sm whitespace-nowrap">{result.statusAssessment.employmentStatus}</td>
                         <td className="px-6 py-6 text-center">
                           <span className="inline-flex items-center justify-center w-10 h-10 rounded-lg bg-gray-50 text-gray-700 font-black border border-gray-100">
                             {result.statusAssessment.score}
                           </span>
                         </td>
-                        <td className="px-6 py-6 text-center text-xs font-bold text-gray-500">
+                        <td className="px-6 py-6 text-center text-sm font-bold text-gray-500">
                           {(result.statusAssessment.weight * 100).toFixed(0)}%
                         </td>
                         <td className="px-6 py-6 text-center">
@@ -1072,7 +1173,7 @@ export default function App() {
                     <tbody>
                       <tr className="hover:bg-amber-50/20 transition-colors">
                         <td className="px-6 py-6 text-sm font-bold text-gray-400">{result.otherSubAssessment.no}</td>
-                        <td className="px-6 py-6 font-bold text-gray-900 text-sm italic">{result.otherSubAssessment.description}</td>
+                        <td className="px-6 py-6 font-bold text-gray-900 text-sm">{result.otherSubAssessment.description}</td>
                         <td className="px-6 py-6 font-medium text-gray-700 text-sm">
                           <span className={cn(
                             "px-2 py-1 rounded-md text-[10px] font-bold",
@@ -1086,7 +1187,7 @@ export default function App() {
                             {result.otherSubAssessment.score}
                           </span>
                         </td>
-                        <td className="px-6 py-6 text-center text-xs font-bold text-gray-500">
+                        <td className="px-6 py-6 text-center text-sm font-bold text-gray-500">
                           {(result.otherSubAssessment.weight * 100).toFixed(0)}%
                         </td>
                         <td className="px-6 py-6 text-center">
@@ -1130,13 +1231,13 @@ export default function App() {
                     <tbody className="divide-y divide-gray-100">
                       {result.experienceAssessment.map((exp, idx) => (
                         <tr key={idx} className="hover:bg-blue-50/20 transition-colors">
-                          <td className="px-4 py-4 text-xs font-bold text-gray-400">{exp.no}</td>
-                          <td className="px-4 py-4 text-xs font-medium text-gray-700">{exp.startDate}</td>
-                          <td className="px-4 py-4 text-xs font-medium text-gray-700">{exp.endDate}</td>
-                          <td className="px-4 py-4 text-center text-xs font-black text-gray-900">{exp.months}</td>
-                          <td className="px-4 py-4 text-center text-xs font-bold text-gray-600">{exp.scope}</td>
-                          <td className="px-4 py-4 text-center text-xs font-bold text-gray-600">{exp.position}</td>
-                          <td className="px-4 py-4 text-center text-xs font-bold text-gray-600">{exp.reference}</td>
+                          <td className="px-4 py-4 text-sm font-bold text-gray-400">{exp.no}</td>
+                          <td className="px-4 py-4 text-sm font-medium text-gray-700">{formatIndonesianDate(exp.startDate)}</td>
+                          <td className="px-4 py-4 text-sm font-medium text-gray-700">{formatIndonesianDate(exp.endDate)}</td>
+                          <td className="px-4 py-4 text-center text-sm font-black text-gray-900">{exp.months}</td>
+                          <td className="px-4 py-4 text-center text-sm font-bold text-gray-600">{exp.scope}</td>
+                          <td className="px-4 py-4 text-center text-sm font-bold text-gray-600">{exp.position}</td>
+                          <td className="px-4 py-4 text-center text-sm font-bold text-gray-600">{exp.reference}</td>
                           <td className="px-4 py-4 text-center">
                             <span className="inline-flex items-center justify-center px-2 py-1 rounded bg-blue-50 text-blue-700 font-bold text-xs border border-blue-100">
                               {exp.total.toFixed(2)}
