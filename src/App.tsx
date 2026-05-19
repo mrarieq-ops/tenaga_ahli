@@ -59,6 +59,7 @@ export default function App() {
   const [isExtracting, setIsExtracting] = useState(false);
   const [isCheckingPageCount, setIsCheckingPageCount] = useState(false);
   const [isEvaluating, setIsEvaluating] = useState(false);
+  const [processStep, setProcessStep] = useState<string>("");
   const [error, setError] = useState<string | null>(null);
   const [result, setResult] = useState<EvaluationResult | null>(null);
 
@@ -200,7 +201,12 @@ export default function App() {
       setIsEvaluating(true);
 
       console.log("[Client] Sending data to AI for evaluation...");
-      const evaluation = await evaluateQualification(currentSelText, currentKakText, currentQualText).catch(evalErr => {
+      const evaluation = await evaluateQualification(
+        currentSelText, 
+        currentKakText, 
+        currentQualText,
+        (step) => setProcessStep(step)
+      ).catch(evalErr => {
         if (evalErr.message?.includes('Failed to fetch') || evalErr.name === 'TypeError') {
             throw new Error("Gagal terhubung ke layanan AI. Pastikan koneksi internet stabil.");
         }
@@ -709,7 +715,7 @@ export default function App() {
     const rekapStartRow = currentRow;
     result.criteriaScores.forEach((item) => {
       const row = ws.getRow(currentRow);
-      row.height = 75;
+      row.height = 65;
       row.getCell(1).value = item.no;
       ws.mergeCells(`B${currentRow}:D${currentRow}`);
       row.getCell(2).value = item.name;
@@ -968,10 +974,17 @@ export default function App() {
               {isExtracting || isEvaluating || isCheckingPageCount ? (
                 <>
                   <Loader2 className="w-6 h-6 animate-spin" />
-                  <span>
-                    {isCheckingPageCount ? "Mengecek Halaman..." : 
-                     isExtracting ? "Mengekstrak..." : "Menganalisis..."}
-                  </span>
+                  <div className="flex flex-col items-center">
+                    <span>
+                      {isCheckingPageCount ? "Mengecek Halaman..." : 
+                       isExtracting ? "Mengekstrak Teks..." : "Menganalisis..."}
+                    </span>
+                    {isEvaluating && processStep && (
+                      <span className="text-[10px] uppercase tracking-widest mt-1 opacity-70 font-bold whitespace-nowrap">
+                        {processStep}
+                      </span>
+                    )}
+                  </div>
                 </>
               ) : (
                 <>
