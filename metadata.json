@@ -2,5 +2,7 @@
   "name": "Evaluasi Jasa Konsultansi Konstruksi",
   "description": "Membantu Pokja Pemilihan untuk menilai Kualifikasi Tenaga Ahli jasa konsultansi konstruksi berdasarkan KAK dan Dokumen Seleksi menggunakan AI.",
   "requestFramePermissions": [],
-  "majorCapabilities": []
+  "majorCapabilities": [
+    "MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"
+  ]
 }

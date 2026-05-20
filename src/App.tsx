@@ -23,7 +23,7 @@ import {
 } from "lucide-react";
 import { motion, AnimatePresence } from "motion/react";
 import { cn } from "./lib/utils";
-import { evaluateQualification, type EvaluationResult } from "./services/geminiService";
+import type { EvaluationResult } from "./types";
 import { jsPDF } from "jspdf";
 import autoTable from "jspdf-autotable";
 import * as XLSX from "xlsx";
@@ -150,75 +150,71 @@ export default function App() {
     }
 
     try {
-      setIsExtracting(true);
+      setIsEvaluating(true);
+      setProcessStep("Sedang membaca seluruh isi dokumen kualifikasi tenaga ahli...");
       setError(null);
       setResult(null);
 
-      console.log("[Client] Starting evaluation process...");
+      console.log("[Client] Sending files to backend for multimodal evaluation...");
       
-      let currentSelText = selectionDoc.text;
-      let currentKakText = kakDoc.text;
-      let currentQualText = qualificationDoc.text;
+      const formData = new FormData();
+      formData.append("selectionDoc", selectionDoc.file);
+      formData.append("kakDoc", kakDoc.file);
+      formData.append("qualificationDoc", qualificationDoc.file);
 
-      // Only extract if text is missing
-      if (!currentSelText) {
-        console.log("[Client] Extracting Selection Document...");
-        const res = await extractText([selectionDoc.file!]);
-        currentSelText = res[0];
-        setSelectionDoc(prev => ({ ...prev, text: currentSelText }));
-      }
-
-      if (!currentKakText) {
-        console.log("[Client] Extracting KAK Document...");
-        const res = await extractText([kakDoc.file!]);
-        currentKakText = res[0];
-        setKakDoc(prev => ({ ...prev, text: currentKakText }));
-      }
-
-      if (!currentQualText) {
-        console.log("[Client] Extracting Qualification Document...");
-        const res = await extractText([qualificationDoc.file!]);
-        currentQualText = res[0];
-        setQualificationDoc(prev => ({ ...prev, text: currentQualText }));
-      }
-
-      // Check for extraction errors
-      const allResults = [currentSelText, currentKakText, currentQualText];
-      const failedFile = allResults.find(t => t && typeof t === "string" && t.includes("[ERROR_EXTRACTION_FAILED:"));
-      
-      if (failedFile) {
-        const errorMatch = failedFile.match(/\[ERROR_EXTRACTION_FAILED: ([^|\]]*)(?:\| Reason: ([^\]]*))?\]/);
-        const fileName = errorMatch ? errorMatch[1].trim() : "dokumen";
-        const reason = errorMatch && errorMatch[2] ? errorMatch[2].trim() : "File mungkin terproteksi atau format tidak didukung";
-        throw new Error(`Gagal membaca "${fileName}": ${reason}. Silakan coba simpan ulang PDF Anda sebagai PDF standar.`);
-      }
-
-      if (!currentSelText?.trim() || !currentKakText?.trim() || !currentQualText?.trim()) {
-        throw new Error("Satu atau lebih dokumen utama kosong setelah diekstrak. Mohon periksa kembali file Anda.");
-      }
-
-      setIsExtracting(false);
-      setIsEvaluating(true);
-
-      console.log("[Client] Sending data to AI for evaluation...");
-      const evaluation = await evaluateQualification(
-        currentSelText, 
-        currentKakText, 
-        currentQualText,
-        (step) => setProcessStep(step)
-      ).catch(evalErr => {
-        if (evalErr.message?.includes('Failed to fetch') || evalErr.name === 'TypeError') {
-            throw new Error("Gagal terhubung ke layanan AI. Pastikan koneksi internet stabil.");
-        }
-        throw evalErr;
+      const response = await fetch("/api/evaluate", {
+        method: "POST",
+        body: formData
       });
-      setResult(evaluation);
+
+      if (!response.ok) {
+        throw new Error(`Koneksi ke server gagal (Status: ${response.status}). Mohon coba lagi.`);
+      }
+
+      const reader = response.body?.getReader();
+      if (!reader) {
+        throw new Error("Gagal membaca respon stream dari server.");
+      }
+
+      const decoder = new TextDecoder();
+      let buffer = "";
+
+      while (true) {
+        const { value, done } = await reader.read();
+        if (done) break;
+
+        buffer += decoder.decode(value, { stream: true });
+        const lines = buffer.split("\n");
+        buffer = lines.pop() || ""; // keep partial line
+
+        for (const line of lines) {
+          if (line.trim()) {
+            try {
+              const data = JSON.parse(line);
+              if (data.status === "progress") {
+                setProcessStep(data.message);
+              } else if (data.status === "success" && data.result) {
+                setResult(data.result);
+              } else if (data.status === "error") {
+                throw new Error(data.message || "Evaluasi gagal.");
+              }
+            } catch (err: any) {
+              if (err instanceof SyntaxError) {
+                // Ignore parsing errors for partial/malformed JSON in buffer
+                continue;
+              }
+              throw err;
+            }
+          }
+        }
+      }
     } catch (err) {
       console.error("[Client] Process failed:", err);
       setError(err instanceof Error ? err.message : "Terjadi kesalahan sistem saat memproses dokumen.");
     } finally {
       setIsExtracting(false);
       setIsEvaluating(false);
+      setProcessStep("");
     }
   };
 
@@ -999,7 +995,7 @@ export default function App() {
             <p className="text-sm text-gray-500 animate-pulse font-medium text-center">
               {isCheckingPageCount 
                 ? "Sedang mengecek jumlah halaman agar tidak melebihi 75 halaman..." 
-                : "Sedang memproses dokumen Anda menggunakan AI..."}
+                : "Sedang memproses dokumen menggunakan AI (perkiraan waktu 2-3 MENIT), mohon ditunggu..."}
             </p>
           )}
           
@@ -1037,7 +1033,7 @@ export default function App() {
                         stroke="#2563EB" strokeWidth="16" fill="transparent"
                         strokeDasharray={552}
                         initial={{ strokeDashoffset: 552 }}
-                        animate={{ strokeDashoffset: 552 - (552 * result.overallScore) / 100 }}
+                        animate={{ strokeDashoffset: 552 - (552 * result.overallScore) / 60 }}
                         transition={{ duration: 1.5, ease: "easeOut" }}
                       />
                     </svg>
@@ -1337,6 +1333,23 @@ export default function App() {
                           </td>
                         </motion.tr>
                       ))}
+                      {/* Row SUM/Total */}
+                      <tr className="bg-gray-100/60 font-bold border-t-2 border-gray-300">
+                        <td className="px-6 py-4 text-sm font-bold text-gray-500"></td>
+                        <td className="px-6 py-4 text-sm font-black text-gray-900 border-r border-gray-100">JUMLAH TOTAL</td>
+                        <td className="px-6 py-4 text-center"></td>
+                        <td className="px-6 py-4 text-center text-sm font-black text-gray-800">
+                          {Math.round(result.criteriaScores.reduce((sum, item) => sum + (item.bobot * 100), 0))}%
+                        </td>
+                        <td className="px-6 py-4 text-center">
+                          <span className="inline-flex items-center justify-center w-14 h-11 rounded-lg bg-blue-600 text-white text-base font-black shadow-md shadow-blue-500/20">
+                            {result.overallScore.toFixed(2)}
+                          </span>
+                        </td>
+                        <td className="px-6 py-4 text-sm font-black text-blue-700 leading-relaxed max-w-md">
+                          Nilai ini BELUM Dikalikan Bobot per Tenaga Ahli sesuai Dokumen Seleksi
+                        </td>
+                      </tr>
                     </tbody>
                   </table>
                 </div>
