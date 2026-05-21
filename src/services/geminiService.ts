@@ -21,6 +21,54 @@ function getAi(): GoogleGenAI {
   return aiClient;
 }
 
+function isQuotaExceededError(err: any): boolean {
+  if (!err) return false;
+  
+  const msg = (err.message || err.statusText || "").toLowerCase();
+  const status = String(err.status || err.statusCode || err.code || err.status_code || "");
+  const details = typeof err.details === "string" ? err.details.toLowerCase() : "";
+  const errText = JSON.stringify(err).toLowerCase();
+  
+  return (
+    msg.includes("quota") ||
+    msg.includes("exhausted") ||
+    msg.includes("rate limit") ||
+    msg.includes("limit exceeded") ||
+    msg.includes("limit_exceeded") ||
+    msg.includes("resource_exhausted") ||
+    msg.includes("429") ||
+    status === "429" ||
+    status.includes("EXHAUSTED") ||
+    details.includes("quota") ||
+    details.includes("exhausted") ||
+    details.includes("rate limit") ||
+    errText.includes("quota") ||
+    errText.includes("exhausted") ||
+    errText.includes("rate limit") ||
+    errText.includes("429")
+  );
+}
+
+function handleGeminiError(error: any): never {
+  console.error("[Gemini Error Debug]:", error);
+  
+  if (isQuotaExceededError(error)) {
+    throw new Error(
+      "Batas kuota pemakaian model AI Gemini telah habis (Rate Limit / Quota Exceeded / Resource Exhausted).\n\n" +
+      "Silakan coba beberapa saat lagi atau upgrade untuk meningkatkan batas kuota."
+    );
+  }
+  
+  const msg = (error.message || "").toLowerCase();
+  if (msg.includes("api key") || msg.includes("apikey") || msg.includes("unauthorized") || msg.includes("invalid key") || msg.includes("key not found")) {
+    throw new Error(
+      "Kunci API Gemini (GEMINI_API_KEY) tidak valid atau tidak diizinkan. Silakan periksa pengaturan Secrets Anda."
+    );
+  }
+
+  throw new Error(error.message || "Gagal berkomunikasi dengan layanan AI Gemini.");
+}
+
 async function extractExperiencesRaw(
   qualificationText: string,
   qualificationBase64?: string
@@ -61,33 +109,32 @@ async function extractExperiencesRaw(
 
   contents.push({ text: promptText });
 
-  const response = await ai.models.generateContent({
-    model,
-    contents,
-    config: {
-      responseMimeType: "application/json",
-      responseSchema: {
-        type: Type.ARRAY,
-        items: {
-          type: Type.OBJECT,
-          properties: {
-            no: { type: Type.NUMBER },
-            packageName: { type: Type.STRING },
-            startDate: { type: Type.STRING },
-            endDate: { type: Type.STRING }
-          },
-          required: ["no", "packageName", "startDate", "endDate"]
+  try {
+    const response = await ai.models.generateContent({
+      model,
+      contents,
+      config: {
+        responseMimeType: "application/json",
+        responseSchema: {
+          type: Type.ARRAY,
+          items: {
+            type: Type.OBJECT,
+            properties: {
+              no: { type: Type.NUMBER },
+              packageName: { type: Type.STRING },
+              startDate: { type: Type.STRING },
+              endDate: { type: Type.STRING }
+            },
+            required: ["no", "packageName", "startDate", "endDate"]
+          }
         }
       }
-    }
-  });
+    });
 
-  const rawText = response.text || "[]";
-  try {
+    const rawText = response.text || "[]";
     return JSON.parse(rawText.replace(/```json/g, "").replace(/```/g, "").trim());
-  } catch (e) {
-    console.error("Failed to parse extracted experiences:", e);
-    return [];
+  } catch (err) {
+    handleGeminiError(err);
   }
 }
 
@@ -99,7 +146,10 @@ async function extractExperiences(
     try {
       console.log("[Gemini] Attempting multimodal experience extraction...");
       return await extractExperiencesRaw(qualificationText, qualificationBase64);
-    } catch (err) {
+    } catch (err: any) {
+      if (err.message && err.message.includes("Batas kuota pemakaian model AI Gemini")) {
+        throw err;
+      }
       console.warn("[Gemini] Multimodal extraction failed, retrying with pure text...", err);
     }
   }
@@ -127,42 +177,42 @@ async function evaluateQualificationWithMode(
     });
   }
 
-  const mainPromptText = `
+const mainPromptText = `
     Anda adalah asisten ahli Pokja Pemilihan Jasa Konsultansi Konstruksi.
-    Tugas Anda adalah menilai Data Kualifikasi Tenaga Ahli secara mendetail berdasarkan kriteria yang ada di Dokumen Seleksi pada BAB VI Lembar Kriteria Evaluasi.
+    Tugas Anda adalah menilai Kualifikasi Tenaga Ahli secara mendetail berdasarkan kriteria di Dokumen Seleksi pada BAB VI Lembar Kriteria Evaluasi.
 
     DATA DASAR:
     1. DOKUMEN SELEKSI (KRITERIA EVALUASI BAB VI - TEKS): ${selectionDoc.text.substring(0, 120000)}
     2. KAK (PERSYARATAN JABATAN & KUALIFIKASI - TEKS): ${kakDoc.text.substring(0, 90000)}
-    3. DATA CV (ORGANISASI & REFERENSI TEKS): ${qualificationDoc.text.substring(0, 180000)}
+    3. DATA CV (ORGANISASI & REFERENSI TEKS): ${qualificationDoc.text.substring(0, 150000)}
     
     4. DAFTAR PENGALAMAN YANG SUDAH DIEKSTRAK (GUNAKAN INI SEBAGAI BASIS UTAMA):
     ${JSON.stringify(rawExperiences)}
 
     TUGAS UTAMA:
     Gunakan daftar pengalaman yang sudah diekstrak di atas sebagai basis penilaian pengalaman profesional tenaga ahli. Berikan penilaian untuk SETIAP baris pengalaman tersebut.
-    ${useMultimodal ? "Cek elemen visual (gambar, foto, grafik, scan ijazah, bukti potong pajak, scan referensi, stempel, dll.) langsung dari file PDF CV asli yang dilampirkan untuk memvalidasi keberadaan fisik dokumen tersebut secara akurat." : "Gunakan data teks di atas untuk memvalidasi keberadaan dokumen pendukung seperti scan ijazah, bukti potong pajak, sertifikasi SKK, dan surat keterangan kerja."}
+    ${useMultimodal ? "Cek elemen visual (gambar, foto, scan ijazah, bukti potong pajak, scan referensi, dll.) langsung dari file PDF CV asli yang dilampirkan untuk memvalidasi keberadaan fisik dokumen tersebut secara akurat." : "Gunakan data teks di atas untuk memvalidasi keberadaan dokumen pendukung seperti scan ijazah, bukti potong pajak, sertifikasi SKK, dan surat keterangan kerja."}
 
     ATURAN PENILAIAN SANGAT KETAT (MANDATORY):
     1. IDENTIFIKASI TENAGA AHLI: Dari Data CV, ambil Nama personil & Posisi penugasan yang Diusulkan.
     2. PENILAIAN UNSUR "TINGKAT DAN JURUSAN PENDIDIKAN":
-       - Persyaratan Pendidikan dalam KAK: Ambil dari KAK sesuai dengan "Posisi yang diusulkan".
+       - Persyaratan Pendidikan dalam KAK: Ambil dari KAK sesuai dengan Posisi penugasan.
        - Pendidikan TA yang ditawarkan: Ambil dari Data Kualifikasi/CV tenaga ahli.
        - Nilai: Berikan skor berdasarkan ketentuan "Kriteria Penilaian" di Bab VI. **PENTING: Cek kesesuaian dan keberadaan lampiran ijazah ${useMultimodal ? "(scan ijazah asli/foto ijazah pada berkas PDF)" : "(berdasarkan berkas teks)"}.**
        - Bobot: Ambil bobot persentase untuk unsur Pendidikan dari Bab VI.
        - Nilai Akhir: Nilai x Bobot.
-       - Keterangan AI: Penjelasan detail mengapa nilai tersebut diberikan (analisis kesesuaian dan konfirmasi keberadaan lampiran ijazah).
-    3. PENILAIAN UNSUR "STATUS TENAGA AHLI" (DETAIL):
-       - Bukti Potong/Lapor Pajak PPh 21: Isi "Ada dan mencantumkan nama jelas serta nama perusahaan yang sama dengan nama perusahaan peserta" jika ditemukan bukti pemotongan pajak penghasilan pasal 21 (BPA1 atau form 1721-A1 atau bukti potong sejenis) ${useMultimodal ? "pada scan di berkas PDF" : "pada teks"}. Jika tidak ada, isi "Tidak ada / tidak mencantumkan nama jelas atau nama perusahaan berbeda dengan nama perusahaan peserta".
-       - Status Tenaga Ahli: Isi "Tenaga Ahli tetap" jika ditemukan bukti pemotongan pajak pasal 21 (BPA1) tersebut. Jika tidak, isi "Tenaga ahli tidak tetap".
-       - Nilai: Berikan skor berdasarkan kriteria "Status tenaga ahli yang diusulkan" di Bab VI.
+       - Keterangan AI: Penjelasan dari nilai yang diberikan (analisis kesesuaian dan konfirmasi keberadaan lampiran ijazah).
+    3. PENILAIAN UNSUR "STATUS TENAGA AHLI":
+       - Bukti Potong/Lapor Pajak PPh 21: Isi "Ada dan mencantumkan nama jelas serta nama perusahaan yang sama dengan nama perusahaan peserta" jika ditemukan bukti pemotongan pajak penghasilan pasal 21 (BPA1 atau form 1721-A1) ${useMultimodal ? "pada scan di berkas PDF" : "pada teks"}. Jika tidak ada, isi "Tidak ada / tidak mencantumkan nama jelas atau nama perusahaan berbeda dengan nama perusahaan peserta".
+       - Status Tenaga Ahli: Isi "Tenaga Ahli tetap" jika ditemukan bukti pemotongan pajak pasal 21 (BPA1). Jika tidak, isi "Tenaga ahli tidak tetap".
+       - Nilai: Berikan skor berdasarkan kriteria di Bab VI.
        - Bobot: Ambil bobot persentase untuk unsur Status Tenaga Ahli dari Bab VI.
        - Nilai Akhir: Nilai x Bobot.
        - Keterangan AI: Penjelasan mengenai keberadaan bukti potong pajak penghasilan dan status tenaga ahli yang diberikan.
-    4. PENILAIAN UNSUR "SUBUNSUR LAIN-LAIN" (DETAIL):
+    4. PENILAIAN UNSUR "SUBUNSUR LAIN-LAIN":
        - Uraian Lain-lain: Isi dengan uraian di Subunsur Lain-lain dari Dokumen Seleksi Bab VI.
-       - Penilaian: Isi "Memenuhi" jika dokumen yang dipersyaratkan (misalnya sertifikat kursus bahasa inggris, SKK) dilampirkan ${useMultimodal ? "sebagai scan pada berkas PDF" : "pada berkas teks"}, "Tidak memenuhi" jika tidak ada, "Memenuhi sebagian" jika melampirkan sebagian.
-       - Nilai: Berikan skor berdasarkan kriteria "Subunsur lain-lain" di Bab VI.
+       - Penilaian: Isi "Memenuhi" jika dokumen yang dipersyaratkan dilampirkan ${useMultimodal ? "sebagai scan pada berkas PDF" : "pada berkas teks"}, "Tidak memenuhi" jika tidak ada, "Memenuhi sebagian" jika melampirkan sebagian.
+       - Nilai: Berikan skor berdasarkan kriteria di Bab VI.
        - Bobot: Ambil bobot persentase untuk unsur Subunsur Lain-lain dari Bab VI.
        - Nilai Akhir: Nilai x Bobot.
        - Keterangan AI: Penjelasan mengenai penilaian dan scan lampiran Subunsur Lain-lain.
@@ -176,11 +226,11 @@ async function evaluateQualificationWithMode(
             b. Jika hanya Tahun: hitung 25% dari total durasi tahun tersebut dalam bulan.
        - Lingkup: Nilai 1 (sesuai), 0.75 (menunjang), 0.5 (tidak sesuai) berdasarkan kriteria Bab VI terhadap paket pekerjaan yang dinilai.
        - Posisi: Nilai 1 (sesuai posisi yang diusulkan), 0.5 (tidak sesuai) berdasarkan kriteria Bab VI.
-       - Referensi: Nilai 1 jika ${useMultimodal ? "terdapat scan bukti referensi/surat keterangan keterangan kerja/kontrak pada berkas PDF asli" : "berdasarkan teks tertulis terdapat lampiran referensi/kontrak asli"}, 0 jika tidak ada.
+       - Referensi: Nilai 1 jika ${useMultimodal ? "terdapat scan bukti referensi/surat keterangan kerja pada berkas PDF asli" : "berdasarkan teks tertulis terdapat lampiran referensi/kontrak asli"}, 0 jika tidak ada.
        - Jumlah: Bulan x Lingkup x Posisi x Referensi.
        - Keterangan AI: tuliskan nama paket pekerjaan dan Justifikasi mengenai penilaian lingkup dan posisi serta keberadaan bukti referensi.
     6. SKOR DISKRIT: Gunakan hanya skor (misal 100, 80, 50) yang tertulis di Bab VI.
-    7. SYARAT KAK: Ekstrak jumlah tahun pengalaman minimum yang diminta (misal: 5 Tahun).
+    7. SYARAT KAK: Ekstrak jumlah tahun pengalaman minimum yang diminta (misal: 5 tahun).
 
     FORMAT OUTPUT (JSON):
     Sesuai skema respon.
@@ -188,114 +238,118 @@ async function evaluateQualificationWithMode(
 
   contents.push({ text: mainPromptText });
 
-  const response = await ai.models.generateContent({
-    model,
-    contents,
-    config: {
-      systemInstruction: "Kamu adalah agen AI analisis data yang sangat teliti, logis, dan mengutamakan akurasi 100%. Tugasmu adalah memproses kriteria evaluasi dan data riwayat hidup personil. Selalu gunakan kerangka berfikir analitis Chain of Thought untuk melakukan verifikasi silang.",
-      responseMimeType: "application/json",
-      responseSchema: {
-        type: Type.OBJECT,
-        properties: {
-          personnelName: { type: Type.STRING },
-          proposedPosition: { type: Type.STRING },
-          overallScore: { type: Type.NUMBER },
-          educationAssessment: {
-            type: Type.OBJECT,
-            properties: {
-              no: { type: Type.NUMBER },
-              kakRequirement: { type: Type.STRING },
-              offeredEducation: { type: Type.STRING },
-              score: { type: Type.NUMBER },
-              weight: { type: Type.NUMBER },
-              finalScore: { type: Type.NUMBER },
-              aiRemark: { type: Type.STRING }
-            },
-            required: ["no", "kakRequirement", "offeredEducation", "score", "weight", "finalScore", "aiRemark"]
-          },
-          statusAssessment: {
-            type: Type.OBJECT,
-            properties: {
-              no: { type: Type.NUMBER },
-              taxProof: { type: Type.STRING },
-              employmentStatus: { type: Type.STRING },
-              score: { type: Type.NUMBER },
-              weight: { type: Type.NUMBER },
-              finalScore: { type: Type.NUMBER },
-              aiRemark: { type: Type.STRING }
-            },
-            required: ["no", "taxProof", "employmentStatus", "score", "weight", "finalScore", "aiRemark"]
-          },
-          otherSubAssessment: {
-            type: Type.OBJECT,
-            properties: {
-              no: { type: Type.NUMBER },
-              description: { type: Type.STRING },
-              evaluation: { type: Type.STRING },
-              score: { type: Type.NUMBER },
-              weight: { type: Type.NUMBER },
-              finalScore: { type: Type.NUMBER },
-              aiRemark: { type: Type.STRING }
-            },
-            required: ["no", "description", "evaluation", "score", "weight", "finalScore", "aiRemark"]
-          },
-          experienceAssessment: {
-            type: Type.ARRAY,
-            items: {
+  try {
+    const response = await ai.models.generateContent({
+      model,
+      contents,
+      config: {
+      //  systemInstruction: "Kamu adalah agen AI analisis data yang sangat teliti, logis, dan mengutamakan akurasi 100%. Tugasmu adalah memproses kriteria evaluasi dan data riwayat hidup personil. Selalu gunakan kerangka berfikir analitis Chain of Thought untuk melakukan verifikasi silang.",
+        responseMimeType: "application/json",
+        responseSchema: {
+          type: Type.OBJECT,
+          properties: {
+            personnelName: { type: Type.STRING },
+            proposedPosition: { type: Type.STRING },
+            overallScore: { type: Type.NUMBER },
+            educationAssessment: {
               type: Type.OBJECT,
               properties: {
                 no: { type: Type.NUMBER },
-                startDate: { type: Type.STRING },
-                endDate: { type: Type.STRING },
-                months: { type: Type.NUMBER },
-                scope: { type: Type.NUMBER },
-                position: { type: Type.NUMBER },
-                reference: { type: Type.NUMBER },
-                total: { type: Type.NUMBER },
+                kakRequirement: { type: Type.STRING },
+                offeredEducation: { type: Type.STRING },
+                score: { type: Type.NUMBER },
+                weight: { type: Type.NUMBER },
+                finalScore: { type: Type.NUMBER },
                 aiRemark: { type: Type.STRING }
               },
-              required: ["no", "startDate", "endDate", "months", "scope", "position", "reference", "total", "aiRemark"]
-            }
-          },
-          criteriaScores: {
-            type: Type.ARRAY,
-            items: {
+              required: ["no", "kakRequirement", "offeredEducation", "score", "weight", "finalScore", "aiRemark"]
+            },
+            statusAssessment: {
               type: Type.OBJECT,
               properties: {
                 no: { type: Type.NUMBER },
-                name: { type: Type.STRING },
+                taxProof: { type: Type.STRING },
+                employmentStatus: { type: Type.STRING },
                 score: { type: Type.NUMBER },
-                bobot: { type: Type.NUMBER },
-                nilaiAkhir: { type: Type.NUMBER },
-                justification: { type: Type.STRING }
+                weight: { type: Type.NUMBER },
+                finalScore: { type: Type.NUMBER },
+                aiRemark: { type: Type.STRING }
               },
-              required: ["no", "name", "score", "bobot", "nilaiAkhir", "justification"]
-            }
+              required: ["no", "taxProof", "employmentStatus", "score", "weight", "finalScore", "aiRemark"]
+            },
+            otherSubAssessment: {
+              type: Type.OBJECT,
+              properties: {
+                no: { type: Type.NUMBER },
+                description: { type: Type.STRING },
+                evaluation: { type: Type.STRING },
+                score: { type: Type.NUMBER },
+                weight: { type: Type.NUMBER },
+                finalScore: { type: Type.NUMBER },
+                aiRemark: { type: Type.STRING }
+              },
+              required: ["no", "description", "evaluation", "score", "weight", "finalScore", "aiRemark"]
+            },
+            experienceAssessment: {
+              type: Type.ARRAY,
+              items: {
+                type: Type.OBJECT,
+                properties: {
+                  no: { type: Type.NUMBER },
+                  startDate: { type: Type.STRING },
+                  endDate: { type: Type.STRING },
+                  months: { type: Type.NUMBER },
+                  scope: { type: Type.NUMBER },
+                  position: { type: Type.NUMBER },
+                  reference: { type: Type.NUMBER },
+                  total: { type: Type.NUMBER },
+                  aiRemark: { type: Type.STRING }
+                },
+                required: ["no", "startDate", "endDate", "months", "scope", "position", "reference", "total", "aiRemark"]
+              }
+            },
+            criteriaScores: {
+              type: Type.ARRAY,
+              items: {
+                type: Type.OBJECT,
+                properties: {
+                  no: { type: Type.NUMBER },
+                  name: { type: Type.STRING },
+                  score: { type: Type.NUMBER },
+                  bobot: { type: Type.NUMBER },
+                  nilaiAkhir: { type: Type.NUMBER },
+                  justification: { type: Type.STRING }
+                },
+                required: ["no", "name", "score", "bobot", "nilaiAkhir", "justification"]
+              }
+            },
+            summary: { type: Type.STRING },
+            requiredExperience: { type: Type.STRING }
           },
-          summary: { type: Type.STRING },
-          requiredExperience: { type: Type.STRING }
-        },
-        required: [
-          "personnelName", 
-          "proposedPosition", 
-          "overallScore", 
-          "educationAssessment", 
-          "statusAssessment", 
-          "otherSubAssessment", 
-          "experienceAssessment", 
-          "criteriaScores", 
-          "summary", 
-          "requiredExperience"
-        ]
+          required: [
+            "personnelName", 
+            "proposedPosition", 
+            "overallScore", 
+            "educationAssessment", 
+            "statusAssessment", 
+            "otherSubAssessment", 
+            "experienceAssessment", 
+            "criteriaScores", 
+            "summary", 
+            "requiredExperience"
+          ]
+        }
       }
-    }
-  });
+    });
 
-  const rawText = response.text || "";
-  console.log(`[Gemini Mode ${useMultimodal ? "Multimodal" : "Text"}] Response length: ${rawText.length}`);
+    const rawText = response.text || "";
+    console.log(`[Gemini Mode ${useMultimodal ? "Multimodal" : "Text"}] Response length: ${rawText.length}`);
 
-  const cleanJson = rawText.replace(/```json/g, "").replace(/```/g, "").trim();
-  return JSON.parse(cleanJson) as EvaluationResult;
+    const cleanJson = rawText.replace(/```json/g, "").replace(/```/g, "").trim();
+    return JSON.parse(cleanJson) as EvaluationResult;
+  } catch (err) {
+    handleGeminiError(err);
+  }
 }
 
 export async function evaluateQualification(
@@ -325,7 +379,10 @@ export async function evaluateQualification(
       rawExperiences,
       true
     );
-  } catch (multimodalErr) {
+  } catch (multimodalErr: any) {
+    if (multimodalErr.message && multimodalErr.message.includes("Batas kuota pemakaian model AI Gemini")) {
+      throw multimodalErr;
+    }
     console.error("[Gemini] Multimodal evaluation failed. Falling back to structured text evaluation...", multimodalErr);
     if (onProgress) onProgress("Mendeteksi aktivitas berlebih pada engine multimodal, beralih ke analisis berbasis teks (fallback)...");
     

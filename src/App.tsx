@@ -648,6 +648,7 @@ export default function App() {
     });
     
     // Add SUM Row for Table 4
+    const expSumRowIdx = currentRow;
     const expSumRow = ws.getRow(currentRow);
     ws.mergeCells(`A${currentRow}:G${currentRow}`);
     expSumRow.getCell(1).value = "TOTAL BULAN PENGALAMAN ";
@@ -657,25 +658,39 @@ export default function App() {
     expSumRow.getCell(8).font = { bold: true };
     currentRow++;
 
+    const expYearRowIdx = currentRow;
     const expYearRow = ws.getRow(currentRow);
     ws.mergeCells(`A${currentRow}:G${currentRow}`);
     expYearRow.getCell(1).value = "TOTAL TAHUN PENGALAMAN (BULAN / 12) ";
     expYearRow.getCell(1).style = { ...bodyStyle, font: { ...bodyStyle.font, bold: true }, alignment: { horizontal: 'right' } };
-    expYearRow.getCell(8).value = { formula: `H${currentRow - 1}/12` };
+    expYearRow.getCell(8).value = { formula: `H${expSumRowIdx}/12` };
     expYearRow.getCell(8).numFmt = '0.00';
     expYearRow.getCell(8).style = centerStyle;
     expYearRow.getCell(8).font = { bold: true };
     currentRow++;
 
+    const expReqRowIdx = currentRow;
     const expReqRow = ws.getRow(currentRow);
     ws.mergeCells(`A${currentRow}:G${currentRow}`);
     expReqRow.getCell(1).value = "SYARAT PENGALAMAN SESUAI KAK ";
     expReqRow.getCell(1).style = { ...bodyStyle, font: { ...bodyStyle.font, bold: true }, alignment: { horizontal: 'right' } };
-    expReqRow.getCell(8).value = result.requiredExperience || "-";
+    const reqYearsNum = parseFloat(String(result.requiredExperience).replace(/[^0-9.]/g, '')) || 0;
+    expReqRow.getCell(8).value = reqYearsNum > 0 ? reqYearsNum : (result.requiredExperience || "-");
     expReqRow.getCell(8).style = centerStyle;
     expReqRow.getCell(8).font = { bold: true };
+    currentRow++;
+
+    const expPropRow = ws.getRow(currentRow);
+    ws.mergeCells(`A${currentRow}:G${currentRow}`);
+    expPropRow.getCell(1).value = "HASIL PERHITUNGAN SECARA PROPORSIONAL ";
+    expPropRow.getCell(1).style = { ...bodyStyle, font: { ...bodyStyle.font, bold: true }, alignment: { horizontal: 'right' } };
+    expPropRow.getCell(8).value = { formula: `IF(ISNUMBER(H${expReqRowIdx}), IF(H${expReqRowIdx}>0, IF(H${expYearRowIdx}>=H${expReqRowIdx}, 100, H${expYearRowIdx}/H${expReqRowIdx}*100), 0), "-")` };
+    expPropRow.getCell(8).numFmt = '0.00';
+    expPropRow.getCell(8).style = centerStyle;
+    expPropRow.getCell(8).font = { bold: true, color: { argb: 'FF1565C0' } };
+    currentRow++;
     
-    currentRow += 2;
+    currentRow++;
 
     // --- SECTION 5: REKAPITULASI ---
     ws.mergeCells(`A${currentRow}:I${currentRow}`);
