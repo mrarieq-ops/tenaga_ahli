@@ -4,10 +4,6 @@ import path from "path";
 import { fileURLToPath } from "url";
 import { createRequire } from "module";
 import multer from "multer";
-import dotenv from "dotenv";
-dotenv.config();
-
-import { evaluateQualification } from "./src/services/geminiService.ts";
 
 const require = createRequire(import.meta.url);
 const pdf = require("pdf-parse");
@@ -97,93 +93,6 @@ async function startServer() {
         error: "Terjadi kesalahan saat mengekstrak teks PDF",
         message: error?.message || "Kesalahan internal server"
       });
-    }
-  });
-
-  // API Route: Evaluate Qualification Multimodally (Opsi A)
-  app.post("/api/evaluate", (req, res, next) => {
-    upload.fields([
-      { name: "selectionDoc", maxCount: 1 },
-      { name: "kakDoc", maxCount: 1 },
-      { name: "qualificationDoc", maxCount: 1 }
-    ])(req, res, (err) => {
-      if (err instanceof multer.MulterError) {
-        console.error("[Server] Multer Error:", err);
-        return res.status(400).json({ error: "File upload error", message: err.message });
-      } else if (err) {
-        console.error("[Server] Unknown Upload Error:", err);
-        return res.status(500).json({ error: "Upload failed", message: err.message });
-      }
-      next();
-    });
-  }, async (req: any, res) => {
-    // Set up chunked streaming
-    res.setHeader("Content-Type", "application/json");
-    res.setHeader("Transfer-Encoding", "chunked");
-    res.setHeader("Cache-Control", "no-cache");
-    res.setHeader("Connection", "keep-alive");
-
-    try {
-      const files = req.files as any;
-      const selectionFile = files?.["selectionDoc"]?.[0];
-      const kakFile = files?.["kakDoc"]?.[0];
-      const qualificationFile = files?.["qualificationDoc"]?.[0];
-
-      if (!selectionFile || !kakFile || !qualificationFile) {
-        res.write(JSON.stringify({ 
-          status: "error", 
-          message: "Ketiga dokumen berkas harus lengkap diunggah." 
-        }) + "\n");
-        return res.end();
-      }
-
-      console.log(`[Server] Evaluating: ${selectionFile.originalname}, ${kakFile.originalname}, ${qualificationFile.originalname}`);
-      
-      res.write(JSON.stringify({ 
-        status: "progress", 
-        message: "Mengekstrak teks digital dari berkas-berkas PDF..." 
-      }) + "\n");
-
-      // Extract text content from buffer for fallback reference
-      let selectionText = "";
-      let kakText = "";
-      let qualificationText = "";
-
-      try {
-        const p1 = pdf(selectionFile.buffer).then((d: any) => d?.text || "");
-        const p2 = pdf(kakFile.buffer).then((d: any) => d?.text || "");
-        const p3 = pdf(qualificationFile.buffer).then((d: any) => d?.text || "");
-        
-        const textResults = await Promise.all([p1, p2, p3]);
-        selectionText = textResults[0];
-        kakText = textResults[1];
-        qualificationText = textResults[2];
-      } catch (pdfErr) {
-        console.warn("[Server] Warn: Failed to parse native text from one or more PDF buffers. Gemini will fallback to visual PDF natively.", pdfErr);
-      }
-
-      const base64Selection = selectionFile.buffer.toString("base64");
-      const base64Kak = kakFile.buffer.toString("base64");
-      const base64Qual = qualificationFile.buffer.toString("base64");
-
-      const result = await evaluateQualification(
-        { text: selectionText, base64: base64Selection },
-        { text: kakText, base64: base64Kak },
-        { text: qualificationText, base64: base64Qual },
-        (step) => {
-          res.write(JSON.stringify({ status: "progress", message: step }) + "\n");
-        }
-      );
-
-      res.write(JSON.stringify({ status: "success", result }) + "\n");
-      res.end();
-    } catch (err: any) {
-      console.error("[Server] Evaluation failed:", err);
-      res.write(JSON.stringify({ 
-        status: "error", 
-        message: err.message || "Terjadi kesalahan internal saat mengevaluasi kualifikasi." 
-      }) + "\n");
-      res.end();
     }
   });
 

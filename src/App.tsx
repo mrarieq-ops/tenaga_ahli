@@ -3,7 +3,7 @@
  * SPDX-License-Identifier: Apache-2.0
  */
 
-import { useState } from "react";
+import { useState, useEffect } from "react";
 import { useDropzone } from "react-dropzone";
 import { 
   FileUp, 
@@ -23,7 +23,7 @@ import {
 } from "lucide-react";
 import { motion, AnimatePresence } from "motion/react";
 import { cn } from "./lib/utils";
-import type { EvaluationResult } from "./types";
+import { evaluateQualification, type EvaluationResult, isQuotaExceededError } from "./services/geminiService";
 import { jsPDF } from "jspdf";
 import autoTable from "jspdf-autotable";
 import * as XLSX from "xlsx";
@@ -61,7 +61,17 @@ export default function App() {
   const [isEvaluating, setIsEvaluating] = useState(false);
   const [processStep, setProcessStep] = useState<string>("");
   const [error, setError] = useState<string | null>(null);
+  const [isQuotaError, setIsQuotaError] = useState(false);
+  const [quotaCountdown, setQuotaCountdown] = useState<number>(0);
   const [result, setResult] = useState<EvaluationResult | null>(null);
+
+  useEffect(() => {
+    if (quotaCountdown <= 0) return;
+    const interval = setInterval(() => {
+      setQuotaCountdown(prev => prev - 1);
+    }, 1000);
+    return () => clearInterval(interval);
+  }, [quotaCountdown]);
 
   const extractText = async (files: File[]): Promise<string[]> => {
     if (files.length === 0) return [];
@@ -150,71 +160,83 @@ export default function App() {
     }
 
     try {
-      setIsEvaluating(true);
-      setProcessStep("Sedang membaca seluruh isi dokumen kualifikasi tenaga ahli...");
+      setIsExtracting(true);
       setError(null);
+      setIsQuotaError(false);
       setResult(null);
 
-      console.log("[Client] Sending files to backend for multimodal evaluation...");
+      console.log("[Client] Starting evaluation process...");
       
-      const formData = new FormData();
-      formData.append("selectionDoc", selectionDoc.file);
-      formData.append("kakDoc", kakDoc.file);
-      formData.append("qualificationDoc", qualificationDoc.file);
+      let currentSelText = selectionDoc.text;
+      let currentKakText = kakDoc.text;
+      let currentQualText = qualificationDoc.text;
 
-      const response = await fetch("/api/evaluate", {
-        method: "POST",
-        body: formData
-      });
-
-      if (!response.ok) {
-        throw new Error(`Koneksi ke server gagal (Status: ${response.status}). Mohon coba lagi.`);
+      // Only extract if text is missing
+      if (!currentSelText) {
+        console.log("[Client] Extracting Selection Document...");
+        const res = await extractText([selectionDoc.file!]);
+        currentSelText = res[0];
+        setSelectionDoc(prev => ({ ...prev, text: currentSelText }));
       }
 
-      const reader = response.body?.getReader();
-      if (!reader) {
-        throw new Error("Gagal membaca respon stream dari server.");
+      if (!currentKakText) {
+        console.log("[Client] Extracting KAK Document...");
+        const res = await extractText([kakDoc.file!]);
+        currentKakText = res[0];
+        setKakDoc(prev => ({ ...prev, text: currentKakText }));
       }
 
-      const decoder = new TextDecoder();
-      let buffer = "";
+      if (!currentQualText) {
+        console.log("[Client] Extracting Qualification Document...");
+        const res = await extractText([qualificationDoc.file!]);
+        currentQualText = res[0];
+        setQualificationDoc(prev => ({ ...prev, text: currentQualText }));
+      }
 
-      while (true) {
-        const { value, done } = await reader.read();
-        if (done) break;
+      // Check for extraction errors
+      const allResults = [currentSelText, currentKakText, currentQualText];
+      const failedFile = allResults.find(t => t && typeof t === "string" && t.includes("[ERROR_EXTRACTION_FAILED:"));
+      
+      if (failedFile) {
+        const errorMatch = failedFile.match(/\[ERROR_EXTRACTION_FAILED: ([^|\]]*)(?:\| Reason: ([^\]]*))?\]/);
+        const fileName = errorMatch ? errorMatch[1].trim() : "dokumen";
+        const reason = errorMatch && errorMatch[2] ? errorMatch[2].trim() : "File mungkin terproteksi atau format tidak didukung";
+        throw new Error(`Gagal membaca "${fileName}": ${reason}. Silakan coba simpan ulang PDF Anda sebagai PDF standar.`);
+      }
 
-        buffer += decoder.decode(value, { stream: true });
-        const lines = buffer.split("\n");
-        buffer = lines.pop() || ""; // keep partial line
+      if (!currentSelText?.trim() || !currentKakText?.trim() || !currentQualText?.trim()) {
+        throw new Error("Satu atau lebih dokumen utama kosong setelah diekstrak. Mohon periksa kembali file Anda.");
+      }
 
-        for (const line of lines) {
-          if (line.trim()) {
-            try {
-              const data = JSON.parse(line);
-              if (data.status === "progress") {
-                setProcessStep(data.message);
-              } else if (data.status === "success" && data.result) {
-                setResult(data.result);
-              } else if (data.status === "error") {
-                throw new Error(data.message || "Evaluasi gagal.");
-              }
-            } catch (err: any) {
-              if (err instanceof SyntaxError) {
-                // Ignore parsing errors for partial/malformed JSON in buffer
-                continue;
-              }
-              throw err;
-            }
-          }
+      setIsExtracting(false);
+      setIsEvaluating(true);
+
+      console.log("[Client] Sending data to AI for evaluation...");
+      const evaluation = await evaluateQualification(
+        currentSelText, 
+        currentKakText, 
+        currentQualText,
+        (step) => setProcessStep(step)
+      ).catch(evalErr => {
+        if (evalErr.message?.includes('Failed to fetch') || evalErr.name === 'TypeError') {
+            throw new Error("Gagal terhubung ke layanan AI. Pastikan koneksi internet stabil.");
         }
-      }
-    } catch (err) {
+        throw evalErr;
+      });
+      setResult(evaluation);
+    } catch (err: any) {
       console.error("[Client] Process failed:", err);
-      setError(err instanceof Error ? err.message : "Terjadi kesalahan sistem saat memproses dokumen.");
+      if (err instanceof Error && (err.message?.includes("KUOTA_AI_HABIS") || isQuotaExceededError(err))) {
+        setIsQuotaError(true);
+        setError("Kuota penggunaan model AI Gemini Anda telah melampaui batas (RESOURCE_EXHAUSTED / 429).");
+        setQuotaCountdown(60);
+      } else {
+        setIsQuotaError(false);
+        setError(err instanceof Error ? err.message : "Terjadi kesalahan sistem saat memproses dokumen.");
+      }
     } finally {
       setIsExtracting(false);
       setIsEvaluating(false);
-      setProcessStep("");
     }
   };
 
@@ -648,8 +670,8 @@ export default function App() {
     });
     
     // Add SUM Row for Table 4
-    const expSumRowIdx = currentRow;
     const expSumRow = ws.getRow(currentRow);
+    const totalBulanRowIndex = currentRow;
     ws.mergeCells(`A${currentRow}:G${currentRow}`);
     expSumRow.getCell(1).value = "TOTAL BULAN PENGALAMAN ";
     expSumRow.getCell(1).style = { ...tableHeaderStyle('FF1565C0'), alignment: { horizontal: 'right', vertical: 'middle' } };
@@ -658,39 +680,49 @@ export default function App() {
     expSumRow.getCell(8).font = { bold: true };
     currentRow++;
 
-    const expYearRowIdx = currentRow;
     const expYearRow = ws.getRow(currentRow);
+    const totalTahunRowIndex = currentRow;
     ws.mergeCells(`A${currentRow}:G${currentRow}`);
     expYearRow.getCell(1).value = "TOTAL TAHUN PENGALAMAN (BULAN / 12) ";
     expYearRow.getCell(1).style = { ...bodyStyle, font: { ...bodyStyle.font, bold: true }, alignment: { horizontal: 'right' } };
-    expYearRow.getCell(8).value = { formula: `H${expSumRowIdx}/12` };
+    expYearRow.getCell(8).value = { formula: `H${totalBulanRowIndex}/12` };
     expYearRow.getCell(8).numFmt = '0.00';
     expYearRow.getCell(8).style = centerStyle;
     expYearRow.getCell(8).font = { bold: true };
     currentRow++;
 
-    const expReqRowIdx = currentRow;
     const expReqRow = ws.getRow(currentRow);
     ws.mergeCells(`A${currentRow}:G${currentRow}`);
     expReqRow.getCell(1).value = "SYARAT PENGALAMAN SESUAI KAK ";
     expReqRow.getCell(1).style = { ...bodyStyle, font: { ...bodyStyle.font, bold: true }, alignment: { horizontal: 'right' } };
-    const reqYearsNum = parseFloat(String(result.requiredExperience).replace(/[^0-9.]/g, '')) || 0;
-    expReqRow.getCell(8).value = reqYearsNum > 0 ? reqYearsNum : (result.requiredExperience || "-");
+    expReqRow.getCell(8).value = result.requiredExperience || "-";
     expReqRow.getCell(8).style = centerStyle;
     expReqRow.getCell(8).font = { bold: true };
     currentRow++;
 
+    // Safe extraction of numeric required years
+    let reqYears = 0;
+    if (result.requiredExperience) {
+      const match = result.requiredExperience.match(/(\d+(?:\.\d+)?)/);
+      if (match) {
+        reqYears = parseFloat(match[1]);
+      }
+    }
+
     const expPropRow = ws.getRow(currentRow);
     ws.mergeCells(`A${currentRow}:G${currentRow}`);
-    expPropRow.getCell(1).value = "HASIL PERHITUNGAN SECARA PROPORSIONAL ";
+    expPropRow.getCell(1).value = "PROPORSI PENGALAMAN TERHADAP SYARAT KAK (%) ";
     expPropRow.getCell(1).style = { ...bodyStyle, font: { ...bodyStyle.font, bold: true }, alignment: { horizontal: 'right' } };
-    expPropRow.getCell(8).value = { formula: `IF(ISNUMBER(H${expReqRowIdx}), IF(H${expReqRowIdx}>0, IF(H${expYearRowIdx}>=H${expReqRowIdx}, 100, H${expYearRowIdx}/H${expReqRowIdx}*100), 0), "-")` };
-    expPropRow.getCell(8).numFmt = '0.00';
+    if (reqYears > 0) {
+      expPropRow.getCell(8).value = { formula: `MIN(100, H${totalTahunRowIndex}/${reqYears}*100)` };
+      expPropRow.getCell(8).numFmt = '0.00';
+    } else {
+      expPropRow.getCell(8).value = "N/A";
+    }
     expPropRow.getCell(8).style = centerStyle;
-    expPropRow.getCell(8).font = { bold: true, color: { argb: 'FF1565C0' } };
-    currentRow++;
+    expPropRow.getCell(8).font = { bold: true };
     
-    currentRow++;
+    currentRow += 2;
 
     // --- SECTION 5: REKAPITULASI ---
     ws.mergeCells(`A${currentRow}:I${currentRow}`);
@@ -963,10 +995,59 @@ export default function App() {
               initial={{ opacity: 0, y: 10 }}
               animate={{ opacity: 1, y: 0 }}
               exit={{ opacity: 0, y: 10 }}
-              className="mt-8 bg-red-50 border border-red-200 p-4 rounded-2xl flex items-center gap-3 text-red-700"
+              className={cn(
+                "mt-8 p-6 rounded-2xl border flex flex-col md:flex-row md:items-start gap-4 shadow-sm",
+                isQuotaError 
+                  ? "bg-amber-50/70 border-amber-200 text-amber-900" 
+                  : "bg-red-50 border-red-200 text-red-700"
+              )}
             >
-              <AlertCircle className="w-5 h-5" />
-              <p className="text-sm font-medium">{error}</p>
+              <div className={cn(
+                "p-3 rounded-xl inline-flex self-start md:self-auto",
+                isQuotaError ? "bg-amber-100/80 text-amber-700" : "bg-red-100 text-red-700"
+              )}>
+                <AlertCircle className="w-6 h-6 animate-pulse" />
+              </div>
+              <div className="flex-1 space-y-3">
+                <h4 className="font-bold text-base">
+                  {isQuotaError ? "Batas Kuota Model AI Terlampaui (429 / RESOURCE_EXHAUSTED)" : "Terjadi Kesalahan"}
+                </h4>
+                <p className="text-sm leading-relaxed font-medium">
+                  {error}
+                </p>
+                {isQuotaError && (
+                  <div className="pt-3 border-t border-amber-200/50 space-y-4">
+                    <div className="space-y-1">
+                      <p className="text-xs font-bold text-amber-800 uppercase tracking-wider">Langkah yang Direkomendasikan:</p>
+                      <ul className="text-xs list-disc pl-4 space-y-1 text-amber-800/90 font-medium">
+                        <li><strong>Tunggu sesaat:</strong> Kuota permintaan gratis (Rate Limit) biasanya akan di-reset otomatis dalam 1 hingga 2 menit.</li>
+                        <li><strong>Kurangi ukuran file:</strong> File PDF yang memiliki banyak halaman atau teks yang panjang membutuhkan kapasitas token pemrosesan yang besar. Coba gunakan PDF yang lebih ringkas.</li>
+                        <li><strong>Ganti/Periksa API Key:</strong> Pastikan API Key di panel <strong>Settings &gt; Secrets</strong> terhubung dan memiliki sisa kuota yang memadai.</li>
+                      </ul>
+                    </div>
+                    <div className="flex flex-wrap items-center gap-3">
+                      <button
+                        onClick={handleStartEvaluation}
+                        disabled={quotaCountdown > 0 || isExtracting || isEvaluating || isCheckingPageCount}
+                        className={cn(
+                          "px-4 py-2 rounded-xl text-xs font-bold transition-all duration-300 shadow-sm",
+                          quotaCountdown > 0 
+                            ? "bg-amber-200/50 text-amber-600 cursor-not-allowed" 
+                            : "bg-amber-600 hover:bg-amber-700 text-white"
+                        )}
+                      >
+                        {quotaCountdown > 0 ? `Coba Lagi Otomatis (${quotaCountdown}s)` : "Coba Penilaian Lagi Sekarang"}
+                      </button>
+                      <button
+                        onClick={() => { setError(null); setIsQuotaError(false); }}
+                        className="px-4 py-2 border border-amber-300 text-amber-800 hover:bg-amber-100/50 rounded-xl text-xs font-bold transition-all duration-300"
+                      >
+                        Sembunyikan Pesan
+                      </button>
+                    </div>
+                  </div>
+                )}
+              </div>
             </motion.div>
           )}
         </AnimatePresence>
@@ -1010,7 +1091,7 @@ export default function App() {
             <p className="text-sm text-gray-500 animate-pulse font-medium text-center">
               {isCheckingPageCount 
                 ? "Sedang mengecek jumlah halaman agar tidak melebihi 75 halaman..." 
-                : "Sedang memproses dokumen menggunakan AI (perkiraan waktu 2-3 MENIT), mohon ditunggu..."}
+                : "Sedang memproses dokumen Anda menggunakan AI..."}
             </p>
           )}
           
@@ -1048,7 +1129,7 @@ export default function App() {
                         stroke="#2563EB" strokeWidth="16" fill="transparent"
                         strokeDasharray={552}
                         initial={{ strokeDashoffset: 552 }}
-                        animate={{ strokeDashoffset: 552 - (552 * result.overallScore) / 60 }}
+                        animate={{ strokeDashoffset: 552 - (552 * result.overallScore) / 100 }}
                         transition={{ duration: 1.5, ease: "easeOut" }}
                       />
                     </svg>
@@ -1348,23 +1429,6 @@ export default function App() {
                           </td>
                         </motion.tr>
                       ))}
-                      {/* Row SUM/Total */}
-                      <tr className="bg-gray-100/60 font-bold border-t-2 border-gray-300">
-                        <td className="px-6 py-4 text-sm font-bold text-gray-500"></td>
-                        <td className="px-6 py-4 text-sm font-black text-gray-900 border-r border-gray-100">JUMLAH TOTAL</td>
-                        <td className="px-6 py-4 text-center"></td>
-                        <td className="px-6 py-4 text-center text-sm font-black text-gray-800">
-                          {Math.round(result.criteriaScores.reduce((sum, item) => sum + (item.bobot * 100), 0))}%
-                        </td>
-                        <td className="px-6 py-4 text-center">
-                          <span className="inline-flex items-center justify-center w-14 h-11 rounded-lg bg-blue-600 text-white text-base font-black shadow-md shadow-blue-500/20">
-                            {result.overallScore.toFixed(2)}
-                          </span>
-                        </td>
-                        <td className="px-6 py-4 text-sm font-black text-blue-700 leading-relaxed max-w-md">
-                          Nilai ini BELUM Dikalikan Bobot per Tenaga Ahli sesuai Dokumen Seleksi
-                        </td>
-                      </tr>
                     </tbody>
                   </table>
                 </div>
