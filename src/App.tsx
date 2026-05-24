@@ -19,7 +19,8 @@ import {
   ClipboardCheck,
   Download,
   FileSpreadsheet,
-  FileDown
+  FileDown,
+  ExternalLink
 } from "lucide-react";
 import { motion, AnimatePresence } from "motion/react";
 import { cn } from "./lib/utils";
@@ -541,7 +542,7 @@ export default function App() {
     eduData.getCell(3).value = result.educationAssessment.offeredEducation;
     eduData.getCell(4).value = result.educationAssessment.score;
     eduData.getCell(5).value = result.educationAssessment.weight;
-    eduData.getCell(6).value = result.educationAssessment.finalScore;
+    eduData.getCell(6).value = { formula: `D${currentRow}*E${currentRow}` };
     ws.mergeCells(`G${currentRow}:I${currentRow}`);
     eduData.getCell(7).value = result.educationAssessment.aiRemark;
 
@@ -579,7 +580,7 @@ export default function App() {
     statusData.getCell(3).value = result.statusAssessment.employmentStatus;
     statusData.getCell(4).value = result.statusAssessment.score;
     statusData.getCell(5).value = result.statusAssessment.weight;
-    statusData.getCell(6).value = result.statusAssessment.finalScore;
+    statusData.getCell(6).value = { formula: `D${currentRow}*E${currentRow}` };
     ws.mergeCells(`G${currentRow}:I${currentRow}`);
     statusData.getCell(7).value = result.statusAssessment.aiRemark;
     statusData.eachCell((cell, col) => {
@@ -616,7 +617,7 @@ export default function App() {
     otherData.getCell(3).value = result.otherSubAssessment.evaluation;
     otherData.getCell(4).value = result.otherSubAssessment.score;
     otherData.getCell(5).value = result.otherSubAssessment.weight;
-    otherData.getCell(6).value = result.otherSubAssessment.finalScore;
+    otherData.getCell(6).value = { formula: `D${currentRow}*E${currentRow}` };
     ws.mergeCells(`G${currentRow}:I${currentRow}`);
     otherData.getCell(7).value = result.otherSubAssessment.aiRemark;
     otherData.eachCell((cell, col) => {
@@ -659,9 +660,11 @@ export default function App() {
         exp.scope,
         exp.position,
         exp.reference,
-        parseFloat(exp.total.toFixed(2)),
+        null,
         exp.aiRemark
       ];
+      row.getCell(8).value = { formula: `D${currentRow}*E${currentRow}*F${currentRow}*G${currentRow}` };
+      row.getCell(8).numFmt = '0.00';
       row.eachCell((cell, col) => {
         if (col < 9) cell.style = centerStyle;
         else cell.style = bodyStyle;
@@ -711,7 +714,7 @@ export default function App() {
 
     const expPropRow = ws.getRow(currentRow);
     ws.mergeCells(`A${currentRow}:G${currentRow}`);
-    expPropRow.getCell(1).value = "PROPORSI PENGALAMAN TERHADAP SYARAT KAK (%) ";
+    expPropRow.getCell(1).value = "NILAI PENGALAMAN KERJA PROFESIONAL TENAGA AHLI ";
     expPropRow.getCell(1).style = { ...bodyStyle, font: { ...bodyStyle.font, bold: true }, alignment: { horizontal: 'right' } };
     if (reqYears > 0) {
       expPropRow.getCell(8).value = { formula: `MIN(100, H${totalTahunRowIndex}/${reqYears}*100)` };
@@ -764,7 +767,7 @@ export default function App() {
       row.getCell(2).value = item.name;
       row.getCell(5).value = item.score;
       row.getCell(6).value = item.bobot;
-      row.getCell(7).value = item.nilaiAkhir;
+      row.getCell(7).value = { formula: `E${currentRow}*F${currentRow}` };
       ws.mergeCells(`H${currentRow}:I${currentRow}`);
       const justificationCell = row.getCell(8);
       justificationCell.value = item.justification;
@@ -842,13 +845,46 @@ export default function App() {
         </div>
       </nav>
 
-      <main className="max-w-7xl mx-auto px-6 py-12">
-        {/* Hero Section */}
-        <div className="mb-12">
-          <h2 className="text-4xl font-extrabold text-gray-900 mb-4">Evaluasi Kualifikasi Tenaga Ahli</h2>
-          <p className="text-lg text-gray-600 max-w-2xl leading-relaxed">
-            Sistem berbasis AI untuk membantu Pokja Pemilihan mempercepat verifikasi dan penilaian kualifikasi tenaga ahli jasa konsultansi konstruksi.
-          </p>
+      <main className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8 sm:py-12">
+        {/* Responsive, Adaptive Hero Section */}
+        <div className="mb-8 md:mb-12 bg-white rounded-2xl md:rounded-3xl p-6 sm:p-8 lg:p-10 border border-gray-100 shadow-sm relative overflow-hidden transition-all hover:shadow-md">
+          {/* Subtle Decorative Ambient Glows */}
+          <div className="absolute -right-16 -top-16 w-36 h-36 bg-blue-500/5 rounded-full blur-3xl pointer-events-none" />
+          <div className="absolute -left-16 -bottom-16 w-36 h-36 bg-yellow-500/5 rounded-full blur-3xl pointer-events-none" />
+          
+          <div className="relative z-10 flex flex-col lg:flex-row lg:items-center justify-between gap-6 sm:gap-8">
+            <div className="space-y-4 max-w-4xl">
+              <h2 className="text-2xl sm:text-3xl md:text-4xl font-extrabold text-gray-900 tracking-tight leading-tight">
+                Evaluasi Kualifikasi Tenaga Ahli
+              </h2>
+              <p className="text-sm sm:text-base md:text-lg text-gray-600 leading-relaxed font-medium">
+                PENTING: karena belum menemukan hosting cloud yang free (tanpa input kartu kredit), GEMINI AI dalam app ini TIDAK membaca scan lampiran dokumen pendukung seperti scan ijazah, SKK, atau referensi.
+              </p>
+              <div className="pt-2">
+                <p className="text-xs sm:text-sm text-gray-500 font-normal leading-relaxed">
+                  Versi yang mampu membaca scan dokumen, untuk sementara di-hosting di PC lokal melalui url:{" "}
+                  <a 
+                    href="http://10.14.11.79:3000" 
+                    className="inline-flex items-center gap-1 font-semibold text-blue-600 hover:text-blue-700 underline focus:ring-2 focus:ring-blue-100 rounded px-1.5 py-0.5 bg-blue-50/50 hover:bg-blue-50 transition-colors"
+                  >
+                    http://10.14.11.79:3000
+                    <ExternalLink className="w-3.5 h-3.5" />
+                  </a>{" "}
+                  (hanya dapat diakses dari jaringan kantor di hari dan jam kerja).
+                </p>
+              </div>
+            </div>
+            
+            <div className="flex-shrink-0 bg-yellow-50/60 border border-yellow-200/40 rounded-xl sm:rounded-2xl p-4 sm:p-5 flex items-start gap-3 max-w-full lg:max-w-[320px] shadow-sm">
+              <AlertCircle className="w-5 h-5 text-yellow-600 flex-shrink-0 mt-0.5" />
+              <div className="space-y-1">
+                <span className="text-xs font-bold text-yellow-800 uppercase tracking-wider block">Verifikasi Manual</span>
+                <p className="text-xs text-yellow-700 font-medium leading-relaxed">
+                  Harap selalu melakukan verifikasi hasil evaluasi AI dengan dokumen fisik / scan lampiran asli demi menjaga keakuratan hasil akhir penilaian.
+                </p>
+              </div>
+            </div>
+          </div>
         </div>
 
         <div className="grid grid-cols-1 md:grid-cols-3 gap-8">
@@ -1091,7 +1127,7 @@ export default function App() {
             <p className="text-sm text-gray-500 animate-pulse font-medium text-center">
               {isCheckingPageCount 
                 ? "Sedang mengecek jumlah halaman agar tidak melebihi 75 halaman..." 
-                : "Sedang memproses dokumen Anda menggunakan AI..."}
+                : "Sedang memproses dokumen tenaga ahli, mohon ditunggu... ("}
             </p>
           )}
           
@@ -1429,6 +1465,23 @@ export default function App() {
                           </td>
                         </motion.tr>
                       ))}
+                      {/* Row SUM/Total */}
+                      <tr className="bg-gray-100/60 font-bold border-t-2 border-gray-300">
+                        <td className="px-6 py-4 text-sm font-bold text-gray-500"></td>
+                        <td className="px-6 py-4 text-sm font-black text-gray-900 border-r border-gray-100">JUMLAH TOTAL</td>
+                        <td className="px-6 py-4 text-center"></td>
+                        <td className="px-6 py-4 text-center text-sm font-black text-gray-800">
+                          {Math.round(result.criteriaScores.reduce((sum, item) => sum + (item.bobot * 100), 0))}%
+                        </td>
+                        <td className="px-6 py-4 text-center">
+                          <span className="inline-flex items-center justify-center w-14 h-11 rounded-lg bg-blue-600 text-white text-base font-black shadow-md shadow-blue-500/20">
+                            {result.overallScore.toFixed(2)}
+                          </span>
+                        </td>
+                        <td className="px-6 py-4 text-sm font-black text-blue-700 leading-relaxed max-w-md">
+                          Nilai ini BELUM Dikalikan Bobot per Tenaga Ahli sesuai Dokumen Seleksi
+                        </td>
+                      </tr>
                     </tbody>
                   </table>
                 </div>
