@@ -65,6 +65,15 @@ export default function App() {
   const [isQuotaError, setIsQuotaError] = useState(false);
   const [quotaCountdown, setQuotaCountdown] = useState<number>(0);
   const [result, setResult] = useState<EvaluationResult | null>(null);
+  const [lastEvaluatedFilesKey, setLastEvaluatedFilesKey] = useState<string>("");
+
+  const currentFilesKey = [
+    selectionDoc.file ? `${selectionDoc.file.name}-${selectionDoc.file.size}-${selectionDoc.file.lastModified}` : "empty",
+    kakDoc.file ? `${kakDoc.file.name}-${kakDoc.file.size}-${kakDoc.file.lastModified}` : "empty",
+    qualificationDoc.file ? `${qualificationDoc.file.name}-${qualificationDoc.file.size}-${qualificationDoc.file.lastModified}` : "empty"
+  ].join("|");
+
+  const isAlreadyEvaluated = result !== null && error === null && lastEvaluatedFilesKey === currentFilesKey;
 
   useEffect(() => {
     if (quotaCountdown <= 0) return;
@@ -225,6 +234,7 @@ export default function App() {
         throw evalErr;
       });
       setResult(evaluation);
+      setLastEvaluatedFilesKey(currentFilesKey);
     } catch (err: any) {
       console.error("[Client] Process failed:", err);
       if (err instanceof Error && (err.message?.includes("KUOTA_AI_HABIS") || isQuotaExceededError(err))) {
@@ -1092,10 +1102,12 @@ export default function App() {
         <div className="mt-12 flex flex-col items-center justify-center gap-6">
           <button
             onClick={handleStartEvaluation}
-            disabled={isExtracting || isEvaluating || isCheckingPageCount}
+            disabled={isExtracting || isEvaluating || isCheckingPageCount || isAlreadyEvaluated}
             className={cn(
               "relative px-12 py-5 rounded-2xl font-black text-lg tracking-tight transition-all duration-300 shadow-xl shadow-blue-500/20 active:scale-95 group",
-              isExtracting || isEvaluating || isCheckingPageCount ? "bg-gray-200 text-gray-400 cursor-not-allowed" : "bg-blue-600 text-white hover:bg-blue-700 hover:-translate-y-1"
+              isExtracting || isEvaluating || isCheckingPageCount || isAlreadyEvaluated 
+                ? "bg-gray-200 text-gray-400 cursor-not-allowed shadow-none" 
+                : "bg-blue-600 text-white hover:bg-blue-700 hover:-translate-y-1"
             )}
           >
             <div className="flex items-center gap-3">
@@ -1117,7 +1129,7 @@ export default function App() {
               ) : (
                 <>
                   <Play className="w-5 h-5 fill-current" />
-                  <span>Mulai Penilaian</span>
+                  <span>{isAlreadyEvaluated ? "Evaluasi Selesai" : "Mulai Penilaian"}</span>
                 </>
               )}
             </div>
@@ -1135,10 +1147,17 @@ export default function App() {
             <motion.p 
               initial={{ opacity: 0, y: -10 }}
               animate={{ opacity: 1, y: 0 }}
-              className="text-sm text-green-600 font-bold flex items-center gap-2"
+              className="text-sm text-green-600 font-bold flex flex-col items-center gap-1.5 text-center"
             >
-              <CheckCircle2 className="w-4 h-4" />
-              Proses penilaian telah selesai dan berhasil!
+              <span className="flex items-center gap-2">
+                <CheckCircle2 className="w-4 h-4" />
+                Proses penilaian telah selesai dan berhasil!
+              </span>
+              {isAlreadyEvaluated && (
+                <span className="text-xs text-gray-500 font-medium max-w-md">
+                  Simpan hasil penilaian ini ke PDF/XLSX atau unggah dokumen Pengalaman Tenaga Ahli yang lain jika ingin melanjutkan.
+                </span>
+              )}
             </motion.p>
           )}
         </div>
