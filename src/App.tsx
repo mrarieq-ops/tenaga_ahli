@@ -872,7 +872,7 @@ export default function App() {
               </p>
               <div className="pt-2">
                 <p className="text-xs sm:text-sm text-gray-500 font-normal leading-relaxed">
-                  Versi yang mampu membaca scan dokumen, untuk sementara di-hosting di PC lokal melalui url:{" "}
+                  Versi app yang bisa membaca lampiran scan dokumen, untuk sementara di-hosting di PC lokal melalui url{" "}
                   <a 
                     href="http://10.14.11.79:3000" 
                     className="inline-flex items-center gap-1 font-semibold text-blue-600 hover:text-blue-700 underline focus:ring-2 focus:ring-blue-100 rounded px-1.5 py-0.5 bg-blue-50/50 hover:bg-blue-50 transition-colors"
@@ -1139,7 +1139,7 @@ export default function App() {
             <p className="text-sm text-gray-500 animate-pulse font-medium text-center">
               {isCheckingPageCount 
                 ? "Sedang mengecek jumlah halaman agar tidak melebihi 75 halaman..." 
-                : "Sedang memproses dokumen tenaga ahli, mohon ditunggu... ("}
+                : "Sedang memproses dokumen tenaga ahli, mohon ditunggu..."}
             </p>
           )}
           
