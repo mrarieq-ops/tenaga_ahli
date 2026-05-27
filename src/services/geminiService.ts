@@ -126,7 +126,7 @@ async function extractExperiences(qualificationText: string): Promise<ExtractedE
     });
   } catch (error: any) {
     if (isQuotaExceededError(error)) {
-      throw new Error("KUOTA_AI_HABIS: Batas kuota (Rate Limit) penggunaan model AI telah habis. Silakan tunggu 1-2 menit sebelum mencoba kembali, atau periksa kuota API Key Gemini Anda.");
+      throw new Error("KUOTA_AI_HABIS: Batas penggunaan model AI telah habis. Silakan tunggu sampai pukul 14.00 WIB sebelum mencoba kembali, atau upgrade ke layanan berbayar.");
     }
     throw error;
   }
@@ -206,6 +206,13 @@ export async function evaluateQualification(
        - Keterangan AI: tuliskan nama paket pekerjaan dan Justifikasi mengenai penilaian lingkup dan posisi serta keberadaan scan referensi.
     6. SKOR DISKRIT: Gunakan hanya skor (misal 100, 80, 50) yang tertulis di Bab VI.
     7. SYARAT KAK: Ekstrak jumlah tahun pengalaman minimum yang diminta (misal: 5 Tahun).
+    8. REKAPITULASI HASIL PENILAIAN (criteriaScores):
+       Tabel ini WAJIB merupakan tabel rekapitulasi yang hanya berisi tepat 4 (empat) baris unsur penilaian berikut secara berurutan:
+       - Baris 1: Tingkat dan Jurusan Pendidikan
+       - Baris 2: Pengalaman Kerja Profesional
+       - Baris 3: Status Tenaga Ahli
+       - Baris 4: Subunsur lain-lain
+       Untuk setiap baris, berikan properti "no" (1 sampai 4), "name" (sesuai nama unsur di atas), "score", "bobot" (dari lembar kriteria evaluasi Bab VI), "nilaiAkhir" (skor * bobot), dan "justification" (penjelasan singkat basis penilaian tersebut).
 
     FORMAT OUTPUT (JSON):
     Sesuai skema yang ditentukan.
@@ -307,7 +314,7 @@ export async function evaluateQualification(
     });
   } catch (error: any) {
     if (isQuotaExceededError(error)) {
-      throw new Error("KUOTA_AI_HABIS: Batas kuota (Rate Limit) penggunaan model AI telah habis. Silakan tunggu 1-2 menit sebelum mencoba kembali, atau periksa kuota API Key Gemini Anda.");
+      throw new Error("KUOTA_AI_HABIS: Batas penggunaan model AI telah habis. Silakan tunggu sampai pukul 14.00 WIB sebelum mencoba kembali, atau upgrade ke layanan berbayar.");
     }
     throw error;
   }
@@ -338,33 +345,87 @@ export async function evaluateQualification(
     }
     result.otherSubAssessment.finalScore = result.otherSubAssessment.score * result.otherSubAssessment.weight;
 
-    let totalScore = 0;
-
+    // Recalculate experience assessment totals
     result.experienceAssessment = result.experienceAssessment.map(exp => {
       const recalculatedTotal = exp.months * exp.scope * exp.position * exp.reference;
       return { ...exp, total: recalculatedTotal };
     });
 
-    result.criteriaScores = result.criteriaScores.map(criterion => {
-      let b = criterion.bobot;
-      if (b > 1) {
-        b = b / 100;
+    // Enforce exactly 4 rows for criteriaScores
+    const expectedCriteria = [
+      { id: 1, key: "education", name: "Tingkat dan Jurusan Pendidikan" },
+      { id: 2, key: "experience", name: "Pengalaman Kerja Profesional" },
+      { id: 3, key: "status", name: "Status Tenaga Ahli" },
+      { id: 4, key: "other", name: "Subunsur lain-lain" }
+    ];
+
+    const normalizedCriteriaScores: any[] = [];
+    let totalScore = 0;
+
+    expectedCriteria.forEach((expected, i) => {
+      // Find matching criterion from AI response to retrieve custom experience score/weight or custom comments
+      let matched = result.criteriaScores?.find(c => {
+        const cName = (c.name || "").toLowerCase();
+        if (expected.key === "education") {
+          return cName.includes("pendidikan") || cName.includes("education") || cName.includes("tingkat");
+        } else if (expected.key === "experience") {
+          return cName.includes("pengalaman") || cName.includes("experience") || cName.includes("kerja") || cName.includes("profesional");
+        } else if (expected.key === "status") {
+          return cName.includes("status") || cName.includes("kepegawaian") || (cName.includes("ahli") && (cName.includes("tempat") || cName.includes("tetap") || cName.includes("tidak") || !cName.includes("pengalaman")));
+        } else if (expected.key === "other") {
+          return cName.includes("lain") || cName.includes("other") || cName.includes("subunsur");
+        }
+        return false;
+      });
+
+      let score = 0;
+      let bobot = 0;
+      let justification = "";
+
+      if (expected.key === "education" && result.educationAssessment) {
+        score = result.educationAssessment.score;
+        bobot = result.educationAssessment.weight;
+        justification = result.educationAssessment.aiRemark;
+      } else if (expected.key === "status" && result.statusAssessment) {
+        score = result.statusAssessment.score;
+        bobot = result.statusAssessment.weight;
+        justification = result.statusAssessment.aiRemark;
+      } else if (expected.key === "other" && result.otherSubAssessment) {
+        score = result.otherSubAssessment.score;
+        bobot = result.otherSubAssessment.weight;
+        justification = result.otherSubAssessment.aiRemark;
+      } else if (expected.key === "experience") {
+        if (matched) {
+          score = typeof matched.score === "number" ? matched.score : 0;
+          bobot = typeof matched.bobot === "number" ? matched.bobot : 0.40;
+          justification = matched.justification || "";
+        } else {
+          // Fallback if AI didn't include experience in criteriaScores
+          const expCriterion = result.criteriaScores?.find(c => (c.name || "").toLowerCase().includes("pengalaman") || (c.name || "").toLowerCase().includes("experience"));
+          score = expCriterion ? expCriterion.score : 0;
+          bobot = expCriterion ? expCriterion.bobot : 0.40;
+          justification = expCriterion ? expCriterion.justification : "Penilaian pengalaman kerja profesional berdasarkan kesesuaian KAK.";
+        }
       }
-      const final = criterion.score * b;
-      totalScore += final;
-      return { 
-        ...criterion, 
-        bobot: b,
-        nilaiAkhir: final
-      };
+
+      if (bobot > 1) {
+        bobot = bobot / 100;
+      }
+      
+      const nilaiAkhir = score * bobot;
+      totalScore += nilaiAkhir;
+
+      normalizedCriteriaScores.push({
+        no: expected.id,
+        name: expected.name,
+        score,
+        bobot,
+        nilaiAkhir,
+        justification
+      });
     });
 
-    // Check if separate assessments are missing from criteriaScores and add them if they are
-    // But usually AI includes them if told it's a Rekapitulasi. 
-    // To be conservative and match the 59.0 summary, we just sum correctly.
-    // If the sum is still double counting, it means the separate assessments ARE in criteriaScores.
-    // So starting at 0 is correct.
-
+    result.criteriaScores = normalizedCriteriaScores;
     result.overallScore = Number(totalScore.toFixed(2));
 
     return result;
